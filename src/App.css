@@ -1,0 +1,131 @@
+.mode-select {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+}
+
+.mode-select h1 {
+  margin: 0 0 8px;
+  font-size: 1.5rem;
+}
+
+.mode-select__group {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+}
+
+.button {
+  flex: 1;
+  padding: 10px 16px;
+  border-radius: 8px;
+  border: 1px solid var(--color-border);
+  background: var(--color-card);
+  color: var(--color-text);
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.button:hover {
+  border-color: var(--color-accent);
+}
+
+.button--active {
+  background: var(--color-accent-soft);
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.button--primary {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: white;
+  width: 100%;
+}
+
+.button--primary:hover {
+  opacity: 0.9;
+}
+
+.button--secondary {
+  background: transparent;
+}
+
+.game {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+}
+
+.score-board {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.score-board__item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.85rem;
+  color: var(--color-muted);
+}
+
+.score-board__value {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.status-bar {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 500;
+}
+
+.board {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+}
+
+.square {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2rem;
+  font-weight: 700;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  cursor: pointer;
+  color: var(--color-accent);
+  transition: background-color 0.15s ease, transform 0.1s ease;
+}
+
+.square:disabled {
+  cursor: not-allowed;
+}
+
+.square:not(:disabled):hover {
+  background: var(--color-accent-soft);
+}
+
+.square--winning {
+  background: var(--color-accent);
+  color: white;
+}
+
+.controls {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+}
