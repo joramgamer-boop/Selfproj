@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { calculateWinner, isDraw } from './gameLogic';
+import { calculateWinner, isDraw, getRandomMove, getBestMove } from './gameLogic';
 
 describe('calculateWinner', () => {
   it('detects each of the 8 winning lines', () => {
@@ -42,5 +42,41 @@ describe('isDraw', () => {
 
   it('is false when the board still has empty squares', () => {
     expect(isDraw(Array(9).fill(null))).toBe(false);
+  });
+});
+
+describe('getRandomMove', () => {
+  it('always returns an index of an empty square', () => {
+    const squares = ['X', null, 'O', null, 'X', null, 'O', null, null];
+    for (let i = 0; i < 20; i++) {
+      const move = getRandomMove(squares);
+      expect(squares[move]).toBeNull();
+    }
+  });
+});
+
+describe('getBestMove', () => {
+  it('takes the immediate winning move when available', () => {
+    const squares = ['X', 'X', null, 'O', 'O', null, null, null, null];
+    expect(getBestMove(squares, 'X')).toBe(2);
+  });
+
+  it("blocks the opponent's immediate winning move", () => {
+    const squares = ['O', 'O', null, 'X', null, null, null, null, null];
+    expect(getBestMove(squares, 'X')).toBe(2);
+  });
+
+  it('never loses when playing a full game against a random opponent', () => {
+    for (let game = 0; game < 20; game++) {
+      const squares = Array(9).fill(null);
+      let player = 'X';
+      while (!calculateWinner(squares) && !isDraw(squares)) {
+        const move = player === 'X' ? getBestMove(squares, 'X') : getRandomMove(squares);
+        squares[move] = player;
+        player = player === 'X' ? 'O' : 'X';
+      }
+      const result = calculateWinner(squares);
+      expect(result === null || result.winner === 'X').toBe(true);
+    }
   });
 });
