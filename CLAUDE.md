@@ -6,6 +6,14 @@ after the project (kebab-case, e.g. `tic-tac-toe/`). Each project owns its own
 not the repo root. Only shared config lives at the root: `CLAUDE.md`, `docs/`,
 `.gitignore`.
 
+## Domain terms
+
+Domain vocabulary is scoped to a single project, never to the repo. Terms belong
+in that project's own `CONTEXT.md` (e.g. `tic-tac-toe/CONTEXT.md`) — create the
+file if it doesn't exist yet, and never put terms in a `CONTEXT.md` at the root.
+A term defined for one project says nothing about another; the projects here
+share no domain, so don't carry a definition across folders.
+
 ## Agent skills
 
 ### Issue tracker
