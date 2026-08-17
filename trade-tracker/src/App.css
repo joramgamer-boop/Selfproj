@@ -1,0 +1,148 @@
+.app {
+  max-width: 30rem;
+  margin: 0 auto;
+  padding: 1.25rem 1rem 3rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.app__title {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+
+.app__loading {
+  color: var(--ink-dim);
+}
+
+.balance {
+  background: var(--panel);
+  border: 1px solid var(--edge);
+  border-radius: 0.75rem;
+  padding: 1.25rem 1rem;
+  text-align: center;
+}
+
+.balance__label,
+.balance__note {
+  margin: 0;
+  font-size: 0.75rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+
+.balance__note {
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.balance__amount {
+  margin: 0.375rem 0;
+  font-size: 2.75rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+
+.deposit {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.deposit__label {
+  font-size: 0.75rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+
+.deposit__row {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.deposit__input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0.75rem;
+  font-size: 1.125rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  background: var(--panel);
+  border: 1px solid var(--edge);
+  border-radius: 0.5rem;
+}
+
+.deposit__submit {
+  flex: 0 0 auto;
+  padding: 0.75rem 1rem;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--ground);
+  background: var(--accent);
+  border: none;
+  border-radius: 0.5rem;
+  cursor: pointer;
+}
+
+.deposit__rejection {
+  margin: 0;
+  color: var(--alarm);
+  font-size: 0.875rem;
+}
+
+.ledger__heading {
+  margin: 0 0 0.5rem;
+  font-size: 0.75rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+
+.ledger__empty {
+  margin: 0;
+  color: var(--ink-dim);
+}
+
+.ledger__entries {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+}
+
+.ledger__entry {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.125rem 0.75rem;
+  padding: 0.75rem 0;
+  border-top: 1px solid var(--edge);
+  font-variant-numeric: tabular-nums;
+}
+
+.ledger__kind {
+  font-weight: 600;
+}
+
+.ledger__amount {
+  text-align: right;
+  color: var(--accent);
+}
+
+.ledger__when,
+.ledger__running {
+  font-size: 0.8125rem;
+  color: var(--ink-dim);
+}
+
+.ledger__running {
+  text-align: right;
+}
