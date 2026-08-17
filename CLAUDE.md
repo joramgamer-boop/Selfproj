@@ -6,10 +6,6 @@ after the project (kebab-case, e.g. `tic-tac-toe/`). Each project owns its own
 not the repo root. Only shared config lives at the root: `CLAUDE.md`, `docs/`,
 `.gitignore`.
 
-Current projects:
-
-- `tic-tac-toe/` — Vite + React Tic Tac Toe (2-player and vs-Computer with minimax).
-
 ## Agent skills
 
 ### Issue tracker
@@ -22,4 +18,4 @@ Default five-role vocabulary, applied as the `Status:` line in each issue file. 
 
 ### Domain docs
 
-Single-context: `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.
+See `docs/agents/domain.md`.

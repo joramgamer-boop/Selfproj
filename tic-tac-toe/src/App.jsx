@@ -2,52 +2,43 @@ import { useState } from 'react';
 import './App.css';
 import ModeSelect from './components/ModeSelect';
 import Game from './components/Game';
-
-const INITIAL_SCORES = { X: 0, O: 0, draws: 0 };
+import { loadPreferences, savePreferences } from './preferences';
 
 export default function App() {
-  const [view, setView] = useState('select');
-  const [mode, setMode] = useState(null);
-  const [difficulty, setDifficulty] = useState(null);
-  const [scores, setScores] = useState(INITIAL_SCORES);
+  const [session, setSession] = useState(null);
+  // Read once on mount: the menu only needs a starting point, and re-reading
+  // would fight the user's in-session edits.
+  const [preferences] = useState(loadPreferences);
 
-  function handleStart(selectedMode, selectedDifficulty) {
-    setMode(selectedMode);
-    setDifficulty(selectedDifficulty);
-    setScores(INITIAL_SCORES);
-    setView('game');
-  }
-
-  function handleRoundEnd(winner) {
-    setScores((prev) => ({
-      X: winner === 'X' ? prev.X + 1 : prev.X,
-      O: winner === 'O' ? prev.O + 1 : prev.O,
-      draws: winner === null ? prev.draws + 1 : prev.draws,
-    }));
+  function handleStart(mode, difficulty) {
+    savePreferences({ mode, difficulty: difficulty ?? preferences.difficulty });
+    setSession({ mode, difficulty });
   }
 
   function handleChangeMode() {
-    setView('select');
-    setMode(null);
-    setDifficulty(null);
-    setScores(INITIAL_SCORES);
+    setSession(null);
   }
 
   return (
     <div className="app">
-      <div className="card">
-        {view === 'select' ? (
-          <ModeSelect onStart={handleStart} />
+      <main className="card">
+        {session === null ? (
+          <ModeSelect
+            onStart={handleStart}
+            initialMode={preferences.mode}
+            initialDifficulty={preferences.difficulty}
+          />
         ) : (
+          // Keyed on the chosen setup so picking a new mode starts a clean
+          // session: fresh board and fresh scores.
           <Game
-            mode={mode}
-            difficulty={difficulty}
-            scores={scores}
-            onRoundEnd={handleRoundEnd}
+            key={`${session.mode}-${session.difficulty}`}
+            mode={session.mode}
+            difficulty={session.difficulty}
             onChangeMode={handleChangeMode}
           />
         )}
-      </div>
+      </main>
     </div>
   );
 }

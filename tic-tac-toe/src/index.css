@@ -1,12 +1,47 @@
 :root {
-  --color-bg: #f4f5f7;
+  color-scheme: light dark;
+
+  --color-bg: #eef0f6;
+  --color-bg-glow: #dfe3f5;
   --color-card: #ffffff;
-  --color-text: #1f2430;
+  --color-text: #1b1f2a;
   --color-muted: #6b7280;
   --color-accent: #4f46e5;
-  --color-accent-soft: #e0e7ff;
-  --color-border: #e2e4e9;
-  --radius: 12px;
+  --color-accent-soft: #e6e8ff;
+  --color-border: #e2e4ec;
+  --color-square: #f6f7fb;
+  --color-x: #4f46e5;
+  --color-o: #e0518c;
+  /* Backing for a won square. Tinted rather than filled, so the drawn winning
+     line stays readable on top of it. */
+  --color-x-soft: #e6e8ff;
+  --color-o-soft: #ffe3ef;
+  --shadow-card: 0 18px 45px rgba(15, 23, 42, 0.1);
+  --shadow-square: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+
+  --radius: 16px;
+  --radius-sm: 10px;
+  --ease: cubic-bezier(0.2, 0.8, 0.3, 1);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-bg: #10121a;
+    --color-bg-glow: #1b1f31;
+    --color-card: #191d29;
+    --color-text: #e9ecf5;
+    --color-muted: #8f96ab;
+    --color-accent: #8b85ff;
+    --color-accent-soft: #262a48;
+    --color-border: #2a2f42;
+    --color-square: #131722;
+    --color-x: #8b85ff;
+    --color-o: #ff8ab5;
+    --color-x-soft: #2b2c56;
+    --color-o-soft: #48253b;
+    --shadow-card: 0 18px 45px rgba(0, 0, 0, 0.45);
+    --shadow-square: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  }
 }
 
 * {
@@ -15,32 +50,41 @@
 
 body {
   margin: 0;
-  min-height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--color-bg);
+  background:
+    radial-gradient(circle at 20% 0%, var(--color-bg-glow), transparent 55%),
+    radial-gradient(circle at 85% 100%, var(--color-bg-glow), transparent 50%),
+    var(--color-bg);
   color: var(--color-text);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
 }
 
+/* Owns the centring: body stays a plain block so this fills the viewport
+   instead of shrink-wrapping the card. */
 .app {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 100%;
-  padding: 24px;
+  min-height: 100dvh;
+  padding: clamp(12px, 4vw, 32px);
 }
 
 .card {
   background: var(--color-card);
+  border: 1px solid var(--color-border);
   border-radius: var(--radius);
-  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
-  padding: 32px;
+  box-shadow: var(--shadow-card);
+  padding: clamp(20px, 5vw, 32px);
   width: 100%;
-  max-width: 360px;
+  /* Wide enough for three controls in a row without them cramping. */
+  max-width: 420px;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 20px;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
 }

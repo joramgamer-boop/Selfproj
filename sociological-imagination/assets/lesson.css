@@ -1,0 +1,504 @@
+/* ============================================================
+   Shared stylesheet for the Sociological Imagination workspace.
+   Tufte-inspired: cream ground, serif text, generous measure,
+   margin notes, and print output that stands on its own.
+   Every lesson and reference document links this file.
+   ============================================================ */
+
+:root {
+  --ground: #fffff8;
+  --ink: #111111;
+  --ink-soft: #4a4a44;
+  --ink-faint: #8a8a80;
+  --rule: #d8d8cc;
+  --accent: #8b2500;      /* burnt sienna — links, emphasis */
+  --accent-soft: #f3ece6;
+  --trouble: #1f5673;     /* the two poles of Mills' distinction */
+  --issue: #8b2500;
+  --correct: #2c5f2d;
+  --wrong: #8b1a1a;
+  --measure: 36rem;
+  --serif: "Palatino Linotype", Palatino, "Book Antiqua", Georgia, "Times New Roman", serif;
+  --sans: "Gill Sans MT", "Gill Sans", Calibri, "Segoe UI", system-ui, sans-serif;
+}
+
+html {
+  font-size: 100%;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background: var(--ground);
+  color: var(--ink);
+  font-family: var(--serif);
+  font-size: 1.05rem;
+  line-height: 1.65;
+  margin: 0;
+  padding: 4rem 1.5rem 8rem;
+  counter-reset: sidenote;
+}
+
+.page {
+  max-width: var(--measure);
+  margin: 0 auto;
+}
+
+/* --- Masthead ------------------------------------------------ */
+
+.masthead {
+  margin-bottom: 3.5rem;
+}
+
+.eyebrow {
+  font-family: var(--sans);
+  font-size: 0.72rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  margin: 0 0 0.75rem;
+}
+
+h1 {
+  font-weight: 400;
+  font-size: 2.15rem;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+  margin: 0 0 0.6rem;
+}
+
+.standfirst {
+  font-style: italic;
+  color: var(--ink-soft);
+  font-size: 1.1rem;
+  margin: 0;
+}
+
+/* --- Structure ----------------------------------------------- */
+
+h2 {
+  font-weight: 400;
+  font-style: italic;
+  font-size: 1.45rem;
+  line-height: 1.25;
+  margin: 3.25rem 0 1rem;
+}
+
+h3 {
+  font-family: var(--sans);
+  font-weight: 600;
+  font-size: 0.82rem;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  margin: 2.25rem 0 0.75rem;
+}
+
+p {
+  margin: 0 0 1.25rem;
+}
+
+p.lede::first-letter {
+  float: left;
+  font-size: 3.1rem;
+  line-height: 0.82;
+  padding: 0.16em 0.09em 0 0;
+  color: var(--accent);
+}
+
+hr {
+  border: 0;
+  border-top: 1px solid var(--rule);
+  margin: 3rem 0;
+}
+
+hr.tight { margin: 2rem 0; }
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+  border-bottom: 1px solid rgba(139, 37, 0, 0.3);
+}
+
+a:hover {
+  border-bottom-color: var(--accent);
+}
+
+em { font-style: italic; }
+strong { font-weight: 600; }
+
+/* --- Mills' own words ---------------------------------------- */
+
+blockquote {
+  margin: 1.75rem 0;
+  padding: 0 0 0 1.35rem;
+  border-left: 2px solid var(--accent);
+  font-size: 1.02rem;
+  color: var(--ink);
+}
+
+blockquote p:last-child { margin-bottom: 0; }
+
+cite {
+  display: block;
+  margin-top: 0.6rem;
+  font-family: var(--sans);
+  font-style: normal;
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+  color: var(--ink-faint);
+}
+
+/* --- Margin notes -------------------------------------------- */
+
+.sidenote {
+  font-family: var(--sans);
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: var(--ink-soft);
+  border-left: 2px solid var(--rule);
+  padding-left: 0.9rem;
+  margin: 1.5rem 0;
+}
+
+@media (min-width: 68rem) {
+  .page { max-width: 52rem; padding-right: 16rem; }
+  .sidenote {
+    float: right;
+    clear: right;
+    width: 14rem;
+    margin-right: -16rem;
+    margin-top: 0.3rem;
+    border-left: none;
+    padding-left: 0;
+  }
+}
+
+/* --- Definition cards ---------------------------------------- */
+
+.def {
+  border: 1px solid var(--rule);
+  border-top: 3px solid var(--ink);
+  padding: 1.2rem 1.4rem;
+  margin: 1.75rem 0;
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.def--trouble { border-top-color: var(--trouble); }
+.def--issue { border-top-color: var(--issue); }
+
+.def dt {
+  font-family: var(--sans);
+  font-weight: 600;
+  font-size: 0.78rem;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  margin-bottom: 0.45rem;
+}
+
+.def--trouble dt { color: var(--trouble); }
+.def--issue dt { color: var(--issue); }
+
+.def dd {
+  margin: 0;
+}
+
+.def dd + dt { margin-top: 1.1rem; }
+
+/* --- Two-column compare -------------------------------------- */
+
+.compare {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+  margin: 1.75rem 0;
+}
+
+@media (min-width: 40rem) {
+  .compare { grid-template-columns: 1fr 1fr; }
+}
+
+.compare > * { margin: 0; }
+
+/* --- Callout ------------------------------------------------- */
+
+.callout {
+  background: var(--accent-soft);
+  border: 1px solid #e3d5c8;
+  padding: 1.15rem 1.35rem;
+  margin: 1.75rem 0;
+  font-size: 0.98rem;
+}
+
+.callout p:last-child { margin-bottom: 0; }
+
+.callout .label {
+  display: block;
+  font-family: var(--sans);
+  font-weight: 600;
+  font-size: 0.74rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 0.5rem;
+}
+
+/* --- Widgets: shared shell ----------------------------------- */
+
+.widget {
+  border: 1px solid var(--rule);
+  background: #fff;
+  padding: 1.4rem 1.5rem;
+  margin: 2rem 0;
+}
+
+.widget__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1rem;
+  font-family: var(--sans);
+  font-size: 0.74rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  border-bottom: 1px solid var(--rule);
+  padding-bottom: 0.7rem;
+  margin-bottom: 1.2rem;
+}
+
+.widget__title { color: var(--ink-soft); font-weight: 600; }
+
+.widget__prompt {
+  font-size: 1.06rem;
+  margin: 0 0 1.1rem;
+}
+
+.widget__prompt .scenario {
+  display: block;
+  font-style: italic;
+  color: var(--ink);
+  margin-top: 0.4rem;
+}
+
+/* --- Widgets: option buttons --------------------------------- */
+
+.opts {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.opt {
+  font-family: var(--serif);
+  font-size: 1rem;
+  text-align: left;
+  padding: 0.7rem 0.95rem;
+  background: var(--ground);
+  border: 1px solid var(--rule);
+  color: var(--ink);
+  cursor: pointer;
+  line-height: 1.45;
+  transition: background 0.12s, border-color 0.12s;
+}
+
+.opt:hover:not(:disabled) {
+  background: #fff;
+  border-color: var(--ink-soft);
+}
+
+.opt:disabled { cursor: default; }
+
+.opt.is-correct {
+  border-color: var(--correct);
+  background: #f0f6f0;
+  color: var(--correct);
+}
+
+.opt.is-wrong {
+  border-color: var(--wrong);
+  background: #faf0f0;
+  color: var(--wrong);
+}
+
+.opt.is-dimmed { opacity: 0.45; }
+
+/* --- Widgets: feedback --------------------------------------- */
+
+.feedback {
+  display: none;
+  border-top: 1px solid var(--rule);
+  padding-top: 1rem;
+  font-size: 0.97rem;
+}
+
+.feedback.is-shown { display: block; }
+
+.feedback__verdict {
+  font-family: var(--sans);
+  font-weight: 600;
+  font-size: 0.76rem;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  margin-bottom: 0.5rem;
+}
+
+.feedback__verdict.is-correct { color: var(--correct); }
+.feedback__verdict.is-wrong { color: var(--wrong); }
+
+.feedback p { margin: 0 0 0.7rem; }
+.feedback p:last-child { margin-bottom: 0; }
+
+.feedback .cited {
+  font-family: var(--sans);
+  font-size: 0.75rem;
+  color: var(--ink-faint);
+  letter-spacing: 0.05em;
+}
+
+/* --- Widgets: controls --------------------------------------- */
+
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  margin-top: 1.1rem;
+}
+
+.btn {
+  font-family: var(--sans);
+  font-size: 0.76rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 0.6rem 1.15rem;
+  background: var(--ink);
+  color: var(--ground);
+  border: 1px solid var(--ink);
+  cursor: pointer;
+}
+
+.btn:hover { background: var(--accent); border-color: var(--accent); }
+
+.btn--ghost {
+  background: transparent;
+  color: var(--ink-soft);
+  border-color: var(--rule);
+}
+
+.btn--ghost:hover {
+  background: transparent;
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+/* --- Widgets: recall ----------------------------------------- */
+
+.recall__field {
+  width: 100%;
+  box-sizing: border-box;
+  font-family: var(--serif);
+  font-size: 1rem;
+  line-height: 1.55;
+  padding: 0.8rem 0.95rem;
+  border: 1px solid var(--rule);
+  background: var(--ground);
+  color: var(--ink);
+  resize: vertical;
+  min-height: 6.5rem;
+}
+
+.recall__field:focus {
+  outline: none;
+  border-color: var(--ink-soft);
+  background: #fff;
+}
+
+.recall__model {
+  display: none;
+  border-top: 1px solid var(--rule);
+  margin-top: 1.1rem;
+  padding-top: 1rem;
+}
+
+.recall__model.is-shown { display: block; }
+
+/* --- Score ---------------------------------------------------- */
+
+.score {
+  font-family: var(--sans);
+  font-size: 0.74rem;
+  letter-spacing: 0.12em;
+  color: var(--ink-faint);
+  white-space: nowrap;
+}
+
+.score.is-done { color: var(--correct); font-weight: 600; }
+
+/* --- Footer / nav --------------------------------------------- */
+
+.colophon {
+  margin-top: 4rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--rule);
+  font-family: var(--sans);
+  font-size: 0.82rem;
+  line-height: 1.6;
+  color: var(--ink-soft);
+}
+
+.colophon h3 { margin-top: 0; }
+
+.colophon ul { padding-left: 1.1rem; margin: 0 0 1.25rem; }
+.colophon li { margin-bottom: 0.4rem; }
+
+.ask {
+  background: var(--accent-soft);
+  border-left: 3px solid var(--accent);
+  padding: 1rem 1.25rem;
+  font-family: var(--sans);
+  font-size: 0.88rem;
+  line-height: 1.6;
+  margin-top: 2rem;
+}
+
+/* --- Reference-document tables --------------------------------- */
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.94rem;
+  margin: 1.5rem 0;
+}
+
+th, td {
+  text-align: left;
+  vertical-align: top;
+  padding: 0.6rem 0.85rem 0.6rem 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+th {
+  font-family: var(--sans);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  border-bottom-color: var(--ink-soft);
+}
+
+/* --- Print ----------------------------------------------------- */
+
+@media print {
+  :root { --ground: #fff; }
+  body { padding: 0; font-size: 10.5pt; }
+  .page { max-width: none; padding-right: 0; }
+  .widget, .ask { border: 1px solid #ccc; page-break-inside: avoid; }
+  .feedback, .recall__model { display: block !important; }
+  .controls, .opt:disabled { display: none; }
+  .sidenote { float: none; width: auto; margin: 1rem 0; border-left: 2px solid #ccc; padding-left: 0.8rem; }
+  a { color: var(--ink); border-bottom: none; }
+  h2, h3 { page-break-after: avoid; }
+  blockquote, .def, table { page-break-inside: avoid; }
+}

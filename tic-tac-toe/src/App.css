@@ -1,95 +1,240 @@
+/* ---------- Mode select ---------- */
+
 .mode-select {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 16px;
+  align-items: stretch;
+  gap: 18px;
   width: 100%;
 }
 
-.mode-select h1 {
-  margin: 0 0 8px;
-  font-size: 1.5rem;
+.mode-select__header {
+  text-align: center;
 }
 
-.mode-select__group {
+.mode-select__title {
+  margin: 0;
+  font-size: 1.75rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.mode-select__title [data-player='X'] {
+  color: var(--color-x);
+}
+
+.mode-select__subtitle {
+  margin: 6px 0 0;
+  font-size: 0.875rem;
+  color: var(--color-muted);
+}
+
+.mode-select__hint {
+  margin: -4px 0 0;
+  min-height: 2.4em;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  color: var(--color-muted);
+  text-align: center;
+}
+
+.option-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.option-group__label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+
+.option-group__buttons {
   display: flex;
   gap: 8px;
-  width: 100%;
 }
+
+/* ---------- Buttons ---------- */
 
 .button {
   flex: 1;
-  padding: 10px 16px;
-  border-radius: 8px;
+  padding: 11px 16px;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--color-border);
   background: var(--color-card);
   color: var(--color-text);
-  font-size: 0.95rem;
+  font: inherit;
+  font-size: 0.9375rem;
+  font-weight: 500;
   cursor: pointer;
-  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  transition:
+    background-color 0.18s var(--ease),
+    border-color 0.18s var(--ease),
+    color 0.18s var(--ease),
+    transform 0.12s var(--ease);
 }
 
 .button:hover {
   border-color: var(--color-accent);
 }
 
+.button:active {
+  transform: scale(0.98);
+}
+
 .button--active {
   background: var(--color-accent-soft);
   border-color: var(--color-accent);
   color: var(--color-accent);
+  font-weight: 600;
 }
 
 .button--primary {
   background: var(--color-accent);
   border-color: var(--color-accent);
-  color: white;
-  width: 100%;
+  color: #ffffff;
 }
 
 .button--primary:hover {
-  opacity: 0.9;
+  filter: brightness(1.08);
 }
 
 .button--secondary {
   background: transparent;
+  color: var(--color-muted);
 }
+
+.button--secondary:hover {
+  color: var(--color-text);
+}
+
+/* ---------- Game ---------- */
 
 .game {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 16px;
+  gap: 18px;
   width: 100%;
 }
 
 .score-board {
   display: flex;
   justify-content: space-between;
+  gap: 8px;
   width: 100%;
+  padding: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-square);
 }
 
+/* space-between keeps the values on a common baseline even if one label
+   wraps to two lines. */
 .score-board__item {
   display: flex;
+  flex: 1;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
-  font-size: 0.85rem;
+  justify-content: space-between;
+  gap: 2px;
+  text-align: center;
+}
+
+.score-board__label {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
   color: var(--color-muted);
 }
 
+.score-board__label[data-player='X'] {
+  color: var(--color-x);
+}
+
+.score-board__label[data-player='O'] {
+  color: var(--color-o);
+}
+
 .score-board__value {
-  font-size: 1.25rem;
-  font-weight: 600;
+  font-size: 1.375rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
   color: var(--color-text);
 }
 
 .status-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   margin: 0;
-  font-size: 1.05rem;
+  min-height: 1.6em;
+  font-size: 1.0625rem;
   font-weight: 500;
 }
 
+.status-bar__mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5em;
+  height: 1.5em;
+  border-radius: 50%;
+  background: var(--color-accent-soft);
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+
+.status-bar__mark[data-player='X'] {
+  color: var(--color-x);
+}
+
+.status-bar__mark[data-player='O'] {
+  color: var(--color-o);
+}
+
+.status-bar--settled {
+  font-weight: 700;
+}
+
+.status-bar__mark--thinking {
+  animation: think-pulse 1.2s var(--ease) infinite;
+}
+
+/* The computer's pause is otherwise a frozen screen. Three drifting dots read
+   as work happening; the delay itself is set per difficulty in useGame. */
+.thinking-dots {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 3px;
+  padding-bottom: 0.35em;
+}
+
+.thinking-dots span {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.35;
+  animation: dot-drift 1.1s var(--ease) infinite;
+}
+
+.thinking-dots span:nth-child(2) {
+  animation-delay: 0.14s;
+}
+
+.thinking-dots span:nth-child(3) {
+  animation-delay: 0.28s;
+}
+
+/* ---------- Board ---------- */
+
 .board {
+  position: relative;
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 8px;
@@ -97,35 +242,210 @@
   aspect-ratio: 1 / 1;
 }
 
+/* ---------- Winning line ---------- */
+
+.winning-line {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  /* Sits over the squares; must never swallow a click meant for one. */
+  pointer-events: none;
+  overflow: visible;
+}
+
+.winning-line__stroke {
+  fill: none;
+  stroke: var(--color-accent);
+  stroke-width: 3.4;
+  stroke-linecap: round;
+  /* pathLength="1" on the element normalises the geometry, so one dash pair
+     covers rows, columns and diagonals alike. The resting state is fully drawn
+     and the animation only supplies the entry — that way reduced motion, which
+     collapses the duration, still leaves the line visible. */
+  stroke-dasharray: 1;
+  stroke-dashoffset: 0;
+  animation: line-draw 0.45s var(--ease) 0.06s backwards;
+}
+
+.winning-line__stroke[data-player='X'] {
+  stroke: var(--color-x);
+}
+
+.winning-line__stroke[data-player='O'] {
+  stroke: var(--color-o);
+}
+
 .square {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 2rem;
+  padding: 0;
+  font-size: clamp(1.75rem, 12vw, 2.5rem);
   font-weight: 700;
-  background: var(--color-bg);
+  background: var(--color-square);
   border: 1px solid var(--color-border);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-square);
   cursor: pointer;
-  color: var(--color-accent);
-  transition: background-color 0.15s ease, transform 0.1s ease;
+  transition:
+    background-color 0.18s var(--ease),
+    border-color 0.18s var(--ease),
+    transform 0.12s var(--ease);
 }
 
 .square:disabled {
-  cursor: not-allowed;
+  cursor: default;
 }
 
 .square:not(:disabled):hover {
   background: var(--color-accent-soft);
+  border-color: var(--color-accent);
+}
+
+.square:not(:disabled):active {
+  transform: scale(0.96);
+}
+
+.square[data-player='X'] {
+  color: var(--color-x);
+}
+
+.square[data-player='O'] {
+  color: var(--color-o);
+}
+
+.square__mark {
+  display: block;
+  line-height: 1;
+  animation: mark-in 0.28s var(--ease);
+}
+
+/* Ghost of the mark you're about to place. Gated on a real hover-capable
+   pointer — on a touchscreen it would only ever flash after the tap. */
+@media (hover: hover) {
+  .square[data-next]:not(:disabled):hover::after {
+    content: attr(data-next);
+    line-height: 1;
+    opacity: 0.28;
+    animation: mark-in 0.18s var(--ease);
+  }
+
+  .square[data-next='X']:hover::after {
+    color: var(--color-x);
+  }
+
+  .square[data-next='O']:hover::after {
+    color: var(--color-o);
+  }
 }
 
 .square--winning {
-  background: var(--color-accent);
-  color: white;
+  animation: win-pulse 0.5s var(--ease);
+}
+
+.square--winning[data-player='X'] {
+  background: var(--color-x-soft);
+  border-color: var(--color-x);
+}
+
+.square--winning[data-player='O'] {
+  background: var(--color-o-soft);
+  border-color: var(--color-o);
 }
 
 .controls {
   display: flex;
   gap: 8px;
   width: 100%;
+}
+
+.sound-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  /* Opts out of the .button flex:1 so the two labelled buttons keep the room. */
+  flex: 0 0 auto;
+  width: 44px;
+  padding: 0;
+  color: var(--color-muted);
+}
+
+.sound-toggle__icon {
+  width: 19px;
+  height: 19px;
+}
+
+/* Overshoots and settles rather than fading in — the difference between a mark
+   appearing and a mark landing. */
+@keyframes mark-in {
+  0% {
+    opacity: 0;
+    transform: scale(0.3) rotate(-14deg);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(1.16) rotate(4deg);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) rotate(0deg);
+  }
+}
+
+@keyframes win-pulse {
+  0% {
+    transform: scale(1);
+  }
+  45% {
+    transform: scale(1.08);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes line-draw {
+  from {
+    stroke-dashoffset: 1;
+  }
+}
+
+@keyframes think-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.75;
+  }
+  50% {
+    transform: scale(1.12);
+    opacity: 1;
+  }
+}
+
+@keyframes dot-drift {
+  0%,
+  60%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.3;
+  }
+  30% {
+    transform: translateY(-3px);
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    /* Without this a delayed animation still holds its start frame for the full
+       delay — which for the winning line means an invisible line. */
+    animation-delay: 0ms !important;
+    transition-delay: 0ms !important;
+  }
 }

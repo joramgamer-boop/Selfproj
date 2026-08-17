@@ -1,5 +1,19 @@
 import { describe, it, expect } from 'vitest';
-import { calculateWinner, isDraw, getRandomMove, getBestMove } from './gameLogic';
+import {
+  calculateWinner,
+  isDraw,
+  getRandomMove,
+  getBestMove,
+  getMediumMove,
+  MEDIUM_BLUNDER_CHANCE,
+} from './gameLogic';
+
+// Hands out a scripted run of "random" numbers, so a blunder can be forced or
+// forbidden precisely instead of hoping for it over enough iterations.
+function sequence(...values) {
+  let call = 0;
+  return () => values[call++];
+}
 
 describe('calculateWinner', () => {
   it('detects each of the 8 winning lines', () => {
@@ -77,6 +91,32 @@ describe('getBestMove', () => {
       }
       const result = calculateWinner(squares);
       expect(result === null || result.winner === 'X').toBe(true);
+    }
+  });
+});
+
+describe('getMediumMove', () => {
+  // Empty squares are [2, 5, 6, 7, 8]; 2 both wins for X and is the only best
+  // move, so a blunder is unmistakable.
+  const squares = ['X', 'X', null, 'O', 'O', null, null, null, null];
+
+  it('plays the best move when the roll clears the blunder chance', () => {
+    expect(getMediumMove(squares, 'X', sequence(MEDIUM_BLUNDER_CHANCE))).toBe(
+      getBestMove(squares, 'X'),
+    );
+  });
+
+  it('throws the move away when the roll lands under the blunder chance', () => {
+    // Second value picks the 5th of the 5 empty squares.
+    const move = getMediumMove(squares, 'X', sequence(MEDIUM_BLUNDER_CHANCE - 0.01, 0.9));
+    expect(move).toBe(8);
+    expect(move).not.toBe(getBestMove(squares, 'X'));
+  });
+
+  it('only ever returns an empty square, however it rolls', () => {
+    const board = ['X', null, 'O', null, 'X', null, 'O', null, null];
+    for (let i = 0; i < 40; i++) {
+      expect(board[getMediumMove(board, 'O')]).toBeNull();
     }
   });
 });

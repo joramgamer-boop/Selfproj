@@ -23,11 +23,11 @@ export function isDraw(squares) {
   return squares.every((square) => square !== null) && !calculateWinner(squares);
 }
 
-export function getRandomMove(squares) {
+export function getRandomMove(squares, random = Math.random) {
   const emptyIndices = squares
     .map((value, index) => (value === null ? index : null))
     .filter((index) => index !== null);
-  const randomIndex = Math.floor(Math.random() * emptyIndices.length);
+  const randomIndex = Math.floor(random() * emptyIndices.length);
   return emptyIndices[randomIndex];
 }
 
@@ -76,4 +76,19 @@ export function getBestMove(squares, aiPlayer) {
   }
 
   return bestMove;
+}
+
+// How often Medium throws a move away. Tuned by feel: low enough that the
+// computer still punishes careless play, high enough that a human who is paying
+// attention gets openings. Perfect play (Hard) can only ever be drawn, so this
+// blunder rate is the whole reason Medium is winnable.
+export const MEDIUM_BLUNDER_CHANCE = 0.25;
+
+// `random` is injectable so the blunder rate can be tested without stubbing
+// Math.random globally.
+export function getMediumMove(squares, aiPlayer, random = Math.random) {
+  if (random() < MEDIUM_BLUNDER_CHANCE) {
+    return getRandomMove(squares, random);
+  }
+  return getBestMove(squares, aiPlayer);
 }
