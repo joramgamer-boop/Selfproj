@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { TradeTrackerEvent } from '../core/events';
-import { deposit, planCreated } from '../test/events';
+import { deposit, planCreated, positionClosed } from '../test/events';
 import type { EventStore } from './eventStore';
 
 /**
@@ -70,6 +70,30 @@ export function describeEventStoreContract(
     it('round-trips a Deposit unchanged', async () => {
       const store = await createFactory().open();
       const recorded = deposit(1234.56, '2026-05-04T12:30:00.000Z');
+
+      await store.append([recorded]);
+
+      expect(await store.read()).toEqual([recorded]);
+    });
+
+    it('round-trips a closed Trade unchanged', async () => {
+      const store = await createFactory().open();
+      // The close carries the whole record of what happened — prices, fees,
+      // flags, the reason and the notes. Losing any of it silently is how a
+      // Trade comes back as a different Trade.
+      const recorded = positionClosed({
+        at: '2026-05-04T12:30:00.000Z',
+        openedAt: '2026-05-04T09:15:00.000Z',
+        closedAt: '2026-05-04T12:25:00.000Z',
+        entryPrice: 1234.56,
+        exitPrice: 1301.4,
+        bestPrice: 1355,
+        fees: 0.87,
+        exitReason: 'manual exit in profit',
+        scaledIn: true,
+        scaledOut: true,
+        notes: 'Took half at the first target.',
+      });
 
       await store.append([recorded]);
 

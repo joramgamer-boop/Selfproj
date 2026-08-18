@@ -14,3 +14,11 @@ export const systemClock: Clock = {
 export function fixedClock(instant: string): Clock {
   return { now: () => new Date(instant) };
 }
+
+/**
+ * Whether a corrected timestamp names a real instant. Timestamps are editable,
+ * so one can arrive as whatever the field held.
+ */
+export function isInstant(value: string): boolean {
+  return !Number.isNaN(Date.parse(value));
+}

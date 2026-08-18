@@ -1,5 +1,6 @@
-import { useState, type FormEvent } from 'react';
+import { useState } from 'react';
 import type { RecordResult } from '../useTradeTracker';
+import { useSubmission } from '../useSubmission';
 
 interface DepositFormProps {
   onRecord: (amount: number) => Promise<RecordResult>;
@@ -7,31 +8,15 @@ interface DepositFormProps {
 
 export default function DepositForm({ onRecord }: DepositFormProps) {
   const [amount, setAmount] = useState('');
-  const [rejection, setRejection] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-
   // The core decides whether the amount is recordable; this only parses the
   // field and shows what came back.
-  const submit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (saving) return;
-
-    setSaving(true);
-    try {
-      const result = await onRecord(Number(amount));
-      if (result.ok) {
-        setAmount('');
-        setRejection(null);
-      } else {
-        setRejection(result.reason);
-      }
-    } finally {
-      setSaving(false);
-    }
-  };
+  const { saving, rejection, onSubmit } = useSubmission(
+    () => onRecord(Number(amount)),
+    () => setAmount(''),
+  );
 
   return (
-    <form className="deposit" onSubmit={submit} noValidate>
+    <form className="deposit" onSubmit={onSubmit} noValidate>
       <label className="deposit__label" htmlFor="deposit-amount">
         Deposit amount
       </label>

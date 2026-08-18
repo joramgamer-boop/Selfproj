@@ -28,8 +28,8 @@ Not "open trade" — a Trade is by definition closed.
 
 A closed, settled Position: the permanent record. **Only Trades count toward
 Expectancy.** A Trade has exactly one entry price and one exit price; a scaled
-entry or exit is recorded as its weighted average with a scaled-out flag, never
-as two Trades.
+entry or exit is recorded as its weighted average, flagged as scaled in or
+scaled out, never as two Trades.
 
 Not "position", not "order", not "fill".
 

@@ -1,5 +1,11 @@
 import { deriveState } from './state';
-import { deposit, planCreated, riskDefaultChanged } from '../test/events';
+import {
+  deposit,
+  planCreated,
+  positionClosed,
+  positionOpened,
+  riskDefaultChanged,
+} from '../test/events';
 
 describe('Balance', () => {
   it('is zero when the Ledger is empty', () => {
@@ -90,6 +96,7 @@ describe('a Plan on the record', () => {
         margin: 50,
         oneR: 10,
         aboveDefaultRisk: false,
+        status: 'planned',
       },
     ]);
   });
@@ -170,5 +177,221 @@ describe('the Risk default', () => {
     ]);
 
     expect(state.plans[0].aboveDefaultRisk).toBe(false);
+  });
+});
+
+describe('taking a Plan live as a Position', () => {
+  const funded = deposit(500, '2026-01-01T09:00:00.000Z');
+  const planned = planCreated({ at: '2026-01-02T09:00:00.000Z' });
+  const openedAt = '2026-01-03T09:00:00.000Z';
+
+  it('leaves nothing open until a Plan has been opened', () => {
+    expect(deriveState([funded, planned]).openPositions).toEqual([]);
+  });
+
+  it('carries the Plan it was sized as, untouched', () => {
+    const state = deriveState([funded, planned, positionOpened(openedAt)]);
+
+    expect(state.openPositions).toEqual([
+      {
+        plan: { ...state.plans[0], status: 'open' },
+        openedAt,
+      },
+    ]);
+    expect(state.openPositions[0].plan).toMatchObject({ oneR: 10, notional: 250 });
+  });
+
+  it('marks the Plan as live, so it is no longer waiting to be taken', () => {
+    const state = deriveState([funded, planned, positionOpened(openedAt)]);
+
+    expect(state.plans[0].status).toBe('open');
+  });
+
+  it('moves no Balance, because nothing has been realized yet', () => {
+    const state = deriveState([funded, planned, positionOpened(openedAt)]);
+
+    expect(state.balance).toBe(500);
+    expect(state.ledger).toHaveLength(1);
+  });
+
+  it('folds a second live Position without arguing, since the Rule against one is overridable', () => {
+    const state = deriveState([
+      funded,
+      planned,
+      positionOpened(openedAt),
+      planCreated({ at: '2026-01-04T09:00:00.000Z', id: 'plan-2' }),
+      positionOpened('2026-01-04T10:00:00.000Z', 'plan-2'),
+    ]);
+
+    // The framework allows exactly one, and ticket 05 blocks the second — but
+    // that block can be overridden with a typed reason, so the log can hold two
+    // and the fold has to report what the log holds.
+    expect(state.openPositions.map((position) => position.plan.id)).toEqual(['plan-1', 'plan-2']);
+  });
+
+  it('refuses to fold a Position opened on a Plan that is not on the record', () => {
+    expect(() => deriveState([funded, positionOpened(openedAt, 'plan-9')])).toThrow(/plan-9/);
+  });
+});
+
+describe('closing a Position into a Trade', () => {
+  const funded = deposit(500, '2026-01-01T09:00:00.000Z');
+  const planned = planCreated({ at: '2026-01-02T09:00:00.000Z' });
+  const openedAt = '2026-01-03T09:00:00.000Z';
+  const closedAt = '2026-01-03T15:00:00.000Z';
+  /** The whole fold the app exists for: Plan → Position → Trade. */
+  const lifecycle = [
+    funded,
+    planned,
+    positionOpened(openedAt),
+    positionClosed({ at: closedAt, openedAt }),
+  ];
+
+  it('records one Trade holding what was logged at the close', () => {
+    const state = deriveState(lifecycle);
+
+    expect(state.trades).toEqual([
+      {
+        plan: { ...state.plans[0], status: 'closed' },
+        openedAt,
+        openedAtEdited: false,
+        closedAt,
+        closedAtEdited: false,
+        entryPrice: 100,
+        exitPrice: 110,
+        bestPrice: 114,
+        fees: 1,
+        exitReason: 'take-profit hit',
+        scaledIn: false,
+        scaledOut: false,
+        notes: '',
+        grossPnl: 25,
+        realizedPnl: 24,
+      },
+    ]);
+  });
+
+  it('closes the Position, leaving nothing open', () => {
+    const state = deriveState(lifecycle);
+
+    expect(state.openPositions).toEqual([]);
+    expect(state.plans[0].status).toBe('closed');
+  });
+
+  it('moves the Balance by the P&L net of fees', () => {
+    const state = deriveState(lifecycle);
+
+    expect(state.balance).toBe(524);
+    expect(state.ledger.at(-1)).toEqual({
+      seq: 3,
+      kind: 'Trade',
+      at: closedAt,
+      amount: 24,
+      balanceAfter: 524,
+    });
+  });
+
+  it('takes a loser out of the Balance, fees and all', () => {
+    const state = deriveState([
+      funded,
+      planned,
+      positionOpened(openedAt),
+      positionClosed({
+        at: closedAt,
+        openedAt,
+        exitPrice: 96,
+        bestPrice: 101,
+        exitReason: 'stop hit',
+      }),
+    ]);
+
+    expect(state.trades[0]).toMatchObject({ grossPnl: -10, realizedPnl: -11 });
+    expect(state.balance).toBe(489);
+    expect(state.ledger.at(-1)).toMatchObject({ kind: 'Trade', amount: -11 });
+  });
+
+  it('books the Trade against the Ledger at the time it actually closed', () => {
+    const state = deriveState([
+      funded,
+      planned,
+      positionOpened(openedAt),
+      // Logged two hours after the fact, and corrected to say so.
+      positionClosed({ at: '2026-01-03T17:00:00.000Z', openedAt, closedAt }),
+    ]);
+
+    expect(state.ledger.at(-1)).toMatchObject({ at: closedAt });
+  });
+
+  it('marks a corrected timestamp as edited, and an auto-stamped one as not', () => {
+    const state = deriveState([
+      funded,
+      planned,
+      positionOpened(openedAt),
+      positionClosed({
+        at: '2026-01-03T17:00:00.000Z',
+        openedAt: '2026-01-03T08:30:00.000Z',
+        closedAt: '2026-01-03T17:00:00.000Z',
+      }),
+    ]);
+
+    expect(state.trades[0]).toMatchObject({
+      openedAt: '2026-01-03T08:30:00.000Z',
+      openedAtEdited: true,
+      closedAtEdited: false,
+    });
+  });
+
+  it('holds a scaled exit as one Trade, at its weighted average, flagged', () => {
+    const state = deriveState([
+      funded,
+      planned,
+      positionOpened(openedAt),
+      // Half out at $108, half at $112: one Trade at $110, not two Trades.
+      positionClosed({ at: closedAt, openedAt, exitPrice: 110, scaledOut: true }),
+    ]);
+
+    expect(state.trades).toHaveLength(1);
+    expect(state.trades[0]).toMatchObject({ exitPrice: 110, scaledOut: true, realizedPnl: 24 });
+  });
+
+  it('keeps the notes written against the Trade', () => {
+    const state = deriveState([
+      funded,
+      planned,
+      positionOpened(openedAt),
+      positionClosed({ at: closedAt, openedAt, notes: 'Took it early — bored, not stopped.' }),
+    ]);
+
+    expect(state.trades[0].notes).toBe('Took it early — bored, not stopped.');
+  });
+
+  it('leaves 1R at the Plan’s original Stop, whatever the Trade did', () => {
+    const state = deriveState([
+      funded,
+      planned,
+      positionOpened(openedAt),
+      // Filled away from the Plan and closed for a multiple of the risk: 1R is
+      // still the $10 committed at the original Stop (ADR-0001).
+      positionClosed({ at: closedAt, openedAt, entryPrice: 101, exitPrice: 140 }),
+    ]);
+
+    expect(state.trades[0].plan.oneR).toBe(10);
+    expect(state.trades[0].plan.stopPrice).toBe(96);
+  });
+
+  it('sizes the next Plan off the Balance the Trade produced', () => {
+    const state = deriveState([
+      ...lifecycle,
+      planCreated({ at: '2026-01-04T09:00:00.000Z', id: 'plan-2' }),
+    ]);
+
+    // 2% of $524, not of the $500 the first Plan was sized against.
+    expect(state.plans[1]).toMatchObject({ balanceAtCreation: 524, oneR: 10.48 });
+  });
+
+  it('refuses to fold a close against a Position that was never open', () => {
+    expect(() => deriveState([funded, planned, positionClosed({ at: closedAt })])).toThrow(
+      /plan-1/,
+    );
   });
 });

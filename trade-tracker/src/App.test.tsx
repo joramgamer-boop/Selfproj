@@ -7,7 +7,8 @@ import { createMemoryEventStore } from './storage/memoryEventStore';
 import type { EventStore } from './storage/eventStore';
 import type { DurableStorage } from './storage/durability';
 import type { TradeTrackerEvent } from './core/events';
-import { deposit } from './test/events';
+import { deposit, planCreated, positionOpened } from './test/events';
+import { toDateTimeInput } from './format';
 
 const clock = fixedClock('2026-05-04T12:30:00.000Z');
 const durable: DurableStorage = { request: async () => 'durable' };
@@ -343,5 +344,142 @@ describe('the Risk default, once changed', () => {
     await waitFor(() =>
       expect(screen.getByLabelText(/^risk, % of balance$/i)).toHaveValue(3),
     );
+  });
+});
+
+describe('taking a Plan live and closing it', () => {
+  // Freshly built per test: the store appends to the array it is handed, so a
+  // shared one would carry the last test's Trade into the next.
+  const sized = () => [
+    deposit(500, '2026-01-01T09:00:00.000Z'),
+    planCreated({ at: '2026-01-02T09:00:00.000Z' }),
+  ];
+  const live = () => [...sized(), positionOpened('2026-01-03T09:00:00.000Z')];
+
+  async function openPosition() {
+    await userEvent.setup().click(screen.getByRole('button', { name: /open as position/i }));
+  }
+
+  /** Everything the record needs: a winner exited at $110 for $1 of fees. */
+  async function closePosition(fields: Record<string, string> = {}) {
+    const user = userEvent.setup();
+    const values = { exit: '110', fees: '1', best: '114', ...fields };
+    // A blank field is typed by not typing into it.
+    if (values.exit) await user.type(await screen.findByLabelText(/exit price/i), values.exit);
+    if (values.fees) await user.type(screen.getByLabelText(/^fees$/i), values.fees);
+    if (values.best) await user.type(screen.getByLabelText(/best price/i), values.best);
+    await user.selectOptions(screen.getByLabelText(/exit reason/i), 'take-profit hit');
+    await user.click(screen.getByRole('button', { name: /close position/i }));
+  }
+
+  it('shows the open Position, with the Plan it was sized as', async () => {
+    renderApp(live());
+
+    const position = await screen.findByLabelText(/open position/i);
+    expect(position).toHaveTextContent(/long/i);
+    expect(position).toHaveTextContent('$10.00');
+    expect(position).toHaveTextContent('96');
+  });
+
+  it('opens a Plan as a Position in one action', async () => {
+    const { log } = renderApp(sized());
+    await screen.findByRole('listitem', { name: /plan/i });
+
+    await openPosition();
+
+    expect(await screen.findByLabelText(/open position/i)).toBeInTheDocument();
+    expect(log).toContainEqual({
+      type: 'PositionOpened',
+      at: '2026-05-04T12:30:00.000Z',
+      planId: 'plan-1',
+    });
+  });
+
+  it('offers nothing to open while a Position is already live', async () => {
+    renderApp(live());
+    await screen.findByLabelText(/open position/i);
+
+    expect(screen.queryByRole('button', { name: /open as position/i })).not.toBeInTheDocument();
+  });
+
+  it('closes a winner, moving the Balance by the P&L net of fees', async () => {
+    const { log } = renderApp(live());
+
+    await closePosition();
+
+    expect(await screen.findByLabelText(/^balance$/i)).toHaveTextContent('$524.00');
+    expect(screen.queryByLabelText(/open position/i)).not.toBeInTheDocument();
+    const entries = screen.getAllByRole('listitem');
+    expect(entries.some((entry) => /trade/i.test(entry.textContent ?? ''))).toBe(true);
+    expect(screen.getByText('$24.00')).toBeInTheDocument();
+    // Left alone, the hold is what the clock said it was.
+    expect(log[3]).toMatchObject({
+      at: '2026-05-04T12:30:00.000Z',
+      openedAt: '2026-01-03T09:00:00.000Z',
+      closedAt: '2026-05-04T12:30:00.000Z',
+    });
+  });
+
+  it('will not close without a Best Price, and records nothing', async () => {
+    const { log } = renderApp(live());
+
+    await closePosition({ best: '' });
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/best price is required/i);
+    expect(log).toHaveLength(3);
+  });
+
+  it('offers the five Exit Reasons and nothing else', async () => {
+    renderApp(live());
+
+    const options = await screen.findAllByRole('option');
+    expect(options.map((option) => option.textContent)).toEqual([
+      'Choose…',
+      'Stop hit',
+      'Manual exit in profit',
+      'Manual exit at a loss',
+      'Take-profit hit',
+      'Liquidated',
+    ]);
+  });
+
+  it('keeps notes and a scaled exit on the one Trade', async () => {
+    const { log } = renderApp(live());
+    const user = userEvent.setup();
+
+    await user.type(await screen.findByLabelText(/exit price/i), '110');
+    await user.click(screen.getByLabelText(/scaled out/i));
+    await user.type(screen.getByLabelText(/^fees$/i), '1');
+    await user.type(screen.getByLabelText(/best price/i), '114');
+    await user.selectOptions(screen.getByLabelText(/exit reason/i), 'take-profit hit');
+    await user.type(screen.getByLabelText(/notes/i), 'Scaled out into strength.');
+    await user.click(screen.getByRole('button', { name: /close position/i }));
+
+    await waitFor(() => expect(log).toHaveLength(4));
+    expect(log[3]).toMatchObject({
+      type: 'PositionClosed',
+      exitPrice: 110,
+      scaledOut: true,
+      notes: 'Scaled out into strength.',
+    });
+  });
+
+  it('takes a corrected close time, so a late entry cannot fabricate the hold', async () => {
+    const { log } = renderApp(live());
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('button', { name: /correct the record/i }));
+    const closedAt = screen.getByLabelText(/closed at/i);
+    await user.clear(closedAt);
+    // The field speaks local time, so the instant to correct to is written the
+    // way the trader would see it wherever the test runs.
+    await user.type(closedAt, toDateTimeInput('2026-01-03T15:00:00.000Z'));
+    await closePosition();
+
+    await waitFor(() => expect(log).toHaveLength(4));
+    expect(log[3]).toMatchObject({
+      at: '2026-05-04T12:30:00.000Z',
+      closedAt: '2026-01-03T15:00:00.000Z',
+    });
   });
 });

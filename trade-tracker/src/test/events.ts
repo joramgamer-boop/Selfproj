@@ -1,4 +1,4 @@
-import type { PlanCreated, TradeTrackerEvent } from '../core/events';
+import type { PlanCreated, PositionClosed, TradeTrackerEvent } from '../core/events';
 
 /** Shared across all three seams so a stored event looks the same everywhere. */
 export function deposit(amount: number, at: string): TradeTrackerEvent {
@@ -21,6 +21,35 @@ export function planCreated(
     leverage: 5,
     liquidationPrice: 80,
     riskFraction: 0.02,
+    ...fields,
+  };
+}
+
+export function positionOpened(at: string, planId = 'plan-1'): TradeTrackerEvent {
+  return { type: 'PositionOpened', at, planId };
+}
+
+/**
+ * The winner that runs a little past the exit: +$25 gross on the Plan above,
+ * $1 of fees, and a Best Price the exit did not quite reach.
+ */
+export function positionClosed(
+  fields: Partial<Omit<PositionClosed, 'type'>> & { at: string },
+): TradeTrackerEvent {
+  return {
+    type: 'PositionClosed',
+    planId: 'plan-1',
+    // Absent a correction, what happened is what the clock said happened.
+    openedAt: fields.at,
+    closedAt: fields.at,
+    entryPrice: 100,
+    exitPrice: 110,
+    bestPrice: 114,
+    fees: 1,
+    exitReason: 'take-profit hit',
+    scaledIn: false,
+    scaledOut: false,
+    notes: '',
     ...fields,
   };
 }

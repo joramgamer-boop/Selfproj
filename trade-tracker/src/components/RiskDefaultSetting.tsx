@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useState } from 'react';
 import {
   MAX_RISK_FRACTION,
   MIN_RISK_FRACTION,
@@ -6,6 +6,7 @@ import {
   riskPercentOf,
 } from '../core/risk';
 import type { RecordResult } from '../useTradeTracker';
+import { useSubmission } from '../useSubmission';
 
 interface RiskDefaultSettingProps {
   riskDefault: number;
@@ -20,31 +21,15 @@ export default function RiskDefaultSetting({ riskDefault, onSave }: RiskDefaultS
   // Null until edited, so the field shows what the log actually holds rather
   // than a copy taken when this form first rendered.
   const [typed, setTyped] = useState<string | null>(null);
-  const [rejection, setRejection] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
 
   const percent = typed ?? String(riskPercentOf(riskDefault));
-
-  const submit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (saving) return;
-
-    setSaving(true);
-    try {
-      const result = await onSave(riskFractionOf(Number(percent)));
-      if (result.ok) {
-        setTyped(null);
-        setRejection(null);
-      } else {
-        setRejection(result.reason);
-      }
-    } finally {
-      setSaving(false);
-    }
-  };
+  const { saving, rejection, onSubmit } = useSubmission(
+    () => onSave(riskFractionOf(Number(percent))),
+    () => setTyped(null),
+  );
 
   return (
-    <form className="setting" onSubmit={submit} noValidate>
+    <form className="setting" onSubmit={onSubmit} noValidate>
       <label className="setting__label" htmlFor="default-risk">
         Default Risk, % of Balance
       </label>

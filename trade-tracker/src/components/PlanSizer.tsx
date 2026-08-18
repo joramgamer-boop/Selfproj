@@ -1,4 +1,4 @@
-import { useState, type ChangeEventHandler, type FormEvent } from 'react';
+import { useState, type ChangeEventHandler } from 'react';
 import type { CreatePlan } from '../core/commands';
 import type { Direction } from '../core/plan';
 import {
@@ -10,6 +10,8 @@ import {
 import { sizeNewPlan } from '../core/sizing';
 import { formatMoney } from '../format';
 import type { RecordResult } from '../useTradeTracker';
+import { useSubmission } from '../useSubmission';
+import Field from './Field';
 
 interface PlanSizerProps {
   balance: number;
@@ -33,8 +35,6 @@ export default function PlanSizer({ balance, riskDefault, onCreate }: PlanSizerP
   // Null until the trader overrides it, so the field follows the setting —
   // including a change made after this form was first rendered.
   const [typedRisk, setTypedRisk] = useState<string | null>(null);
-  const [rejection, setRejection] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
 
   const riskPercent = typedRisk ?? String(riskPercentOf(riskDefault));
   const inputs = {
@@ -45,6 +45,14 @@ export default function PlanSizer({ balance, riskDefault, onCreate }: PlanSizerP
     liquidationPrice: Number(fields.liquidationPrice),
     riskFraction: riskFractionOf(Number(riskPercent)),
   };
+  const { saving, rejection, clearRejection, onSubmit } = useSubmission(
+    () => onCreate({ type: 'CreatePlan', ...inputs }),
+    () => {
+      setFields(blank);
+      setTypedRisk(null);
+    },
+  );
+
   // Whether the trader has finished typing — not whether what they typed is
   // any good, which is the core's to say. A blank field is not a wrong one,
   // so there is nothing to size yet and nothing to complain about.
@@ -57,31 +65,12 @@ export default function PlanSizer({ balance, riskDefault, onCreate }: PlanSizerP
     return (event) => {
       const { value } = event.target;
       setFields((current) => ({ ...current, [field]: value }));
-      setRejection(null);
+      clearRejection();
     };
   };
 
-  const submit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (saving) return;
-
-    setSaving(true);
-    try {
-      const result = await onCreate({ type: 'CreatePlan', ...inputs });
-      if (result.ok) {
-        setFields(blank);
-        setTypedRisk(null);
-        setRejection(null);
-      } else {
-        setRejection(result.reason);
-      }
-    } finally {
-      setSaving(false);
-    }
-  };
-
   return (
-    <form className="sizer" onSubmit={submit} noValidate>
+    <form className="sizer" onSubmit={onSubmit} noValidate>
       <h2 className="sizer__heading">Plan</h2>
 
       <fieldset className="sizer__direction">
@@ -94,7 +83,7 @@ export default function PlanSizer({ balance, riskDefault, onCreate }: PlanSizerP
             aria-pressed={direction === option}
             onClick={() => {
               setDirection(option);
-              setRejection(null);
+              clearRejection();
             }}
           >
             {option === 'long' ? 'Long' : 'Short'}
@@ -126,7 +115,7 @@ export default function PlanSizer({ balance, riskDefault, onCreate }: PlanSizerP
           step={0.1}
           onChange={(event) => {
             setTypedRisk(event.target.value);
-            setRejection(null);
+            clearRejection();
           }}
         />
       </div>
@@ -162,37 +151,5 @@ export default function PlanSizer({ balance, riskDefault, onCreate }: PlanSizerP
         </p>
       )}
     </form>
-  );
-}
-
-interface FieldProps {
-  id: string;
-  label: string;
-  value: string;
-  min?: number;
-  max?: number;
-  step?: number;
-  onChange: ChangeEventHandler<HTMLInputElement>;
-}
-
-function Field({ id, label, value, min, max, step, onChange }: FieldProps) {
-  return (
-    <p className="field">
-      <label className="field__label" htmlFor={id}>
-        {label}
-      </label>
-      <input
-        id={id}
-        className="field__input"
-        type="number"
-        inputMode="decimal"
-        step={step ?? 'any'}
-        min={min}
-        max={max}
-        placeholder="0"
-        value={value}
-        onChange={onChange}
-      />
-    </p>
   );
 }
