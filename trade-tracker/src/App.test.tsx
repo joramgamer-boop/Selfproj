@@ -4,14 +4,16 @@ import App from './App';
 import { fixedClock } from './core/clock';
 import { createMemoryEventStore } from './storage/memoryEventStore';
 import type { EventStore } from './storage/eventStore';
+import type { DurableStorage } from './storage/durability';
 import type { TradeTrackerEvent } from './core/events';
 import { deposit } from './test/events';
 
 const clock = fixedClock('2026-05-04T12:30:00.000Z');
+const durable: DurableStorage = { request: async () => 'durable' };
 
 function renderApp(log: TradeTrackerEvent[] = []) {
   const store = createMemoryEventStore(log);
-  const view = render(<App store={store} clock={clock} />);
+  const view = render(<App store={store} clock={clock} durableStorage={durable} />);
   return { log, view };
 }
 
@@ -64,7 +66,7 @@ describe('the account screen', () => {
     await screen.findByRole('listitem');
 
     view.unmount();
-    render(<App store={createMemoryEventStore(log)} clock={clock} />);
+    render(<App store={createMemoryEventStore(log)} clock={clock} durableStorage={durable} />);
 
     expect(await screen.findByLabelText(/^balance$/i)).toHaveTextContent('$30.00');
     expect(screen.getByRole('listitem')).toHaveTextContent('Deposit');
@@ -94,7 +96,7 @@ describe('the account screen', () => {
         await inner.append(events);
       },
     };
-    render(<App store={slowStore} clock={clock} />);
+    render(<App store={slowStore} clock={clock} durableStorage={durable} />);
 
     const user = userEvent.setup();
     await user.type(await screen.findByLabelText(/deposit amount/i), '30');
@@ -114,5 +116,58 @@ describe('the account screen', () => {
     await recordDeposit('30');
 
     expect(await screen.findByLabelText(/deposit amount/i)).toHaveValue(null);
+  });
+});
+
+describe('how durable the Ledger is', () => {
+  function renderWith(durableStorage: DurableStorage) {
+    render(<App store={createMemoryEventStore()} clock={clock} durableStorage={durableStorage} />);
+    return screen.findByLabelText(/storage durability/i);
+  }
+
+  it('says the log is safe once the browser has granted persistent storage', async () => {
+    expect(await renderWith({ request: async () => 'durable' })).toHaveTextContent(
+      /keep this log until you delete it/i,
+    );
+  });
+
+  it('warns that the browser may clear the log when persistence is refused', async () => {
+    const notice = await renderWith({ request: async () => 'evictable' });
+
+    expect(notice).toHaveTextContent(/may clear this log/i);
+    expect(notice).toHaveTextContent(/home screen/i);
+  });
+
+  it('still says where it stands when the request fails outright', async () => {
+    // Silence here would be the worst of the three answers: the notice simply
+    // never appears, and nothing tells the trader the log can be evicted.
+    expect(await renderWith({ request: () => Promise.reject(new Error('nope')) })).toHaveTextContent(
+      /can be cleared/i,
+    );
+  });
+
+  it('asks the browser to keep the log once, when the app opens', async () => {
+    let asked = 0;
+    await renderWith({
+      request: async () => {
+        asked += 1;
+        return 'durable';
+      },
+    });
+
+    expect(asked).toBe(1);
+  });
+
+  it('claims nothing about durability until the browser has answered', async () => {
+    render(
+      <App
+        store={createMemoryEventStore()}
+        clock={clock}
+        durableStorage={{ request: () => new Promise(() => {}) }}
+      />,
+    );
+
+    await screen.findByLabelText(/^balance$/i);
+    expect(screen.queryByLabelText(/storage durability/i)).not.toBeInTheDocument();
   });
 });

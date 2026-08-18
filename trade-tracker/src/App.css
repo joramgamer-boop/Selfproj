@@ -1,10 +1,24 @@
 .app {
   max-width: 30rem;
+  /* Full height so the storage notice can sit at the foot of the screen rather
+     than floating under the Ledger. */
+  min-height: 100dvh;
   margin: 0 auto;
-  padding: 1.25rem 1rem 3rem;
+  /* Installed on a phone there is no browser chrome to hold content clear of
+     the notch and the home indicator, so the insets are the app's job. */
+  padding: calc(1.25rem + env(safe-area-inset-top)) calc(1rem + env(safe-area-inset-right))
+    calc(3rem + env(safe-area-inset-bottom)) calc(1rem + env(safe-area-inset-left));
   display: flex;
   flex-direction: column;
   gap: 1.25rem;
+}
+
+/* Desktop gets the same phone-shaped views, just wider and with more air. */
+@media (min-width: 48rem) {
+  .app {
+    max-width: 36rem;
+    padding-top: 2.5rem;
+  }
 }
 
 .app__title {
@@ -71,6 +85,9 @@
 .deposit__input {
   flex: 1 1 auto;
   min-width: 0;
+  /* 3rem clears the 44px minimum tap target, and 1.125rem clears the 16px
+     below which iOS zooms the page on focus. */
+  min-height: 3rem;
   padding: 0.75rem;
   font-size: 1.125rem;
   font-variant-numeric: tabular-nums;
@@ -82,6 +99,7 @@
 
 .deposit__submit {
   flex: 0 0 auto;
+  min-height: 3rem;
   padding: 0.75rem 1rem;
   font-size: 1rem;
   font-weight: 600;
@@ -90,6 +108,12 @@
   border: none;
   border-radius: 0.5rem;
   cursor: pointer;
+  /* No 300ms double-tap-zoom wait on a button pressed seconds before a trade. */
+  touch-action: manipulation;
+}
+
+.deposit__submit:disabled {
+  opacity: 0.6;
 }
 
 .deposit__rejection {
@@ -145,4 +169,29 @@
 
 .ledger__running {
   text-align: right;
+}
+
+.storage {
+  margin-top: auto;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--edge);
+  font-size: 0.8125rem;
+  color: var(--ink-dim);
+}
+
+.storage__verdict,
+.storage__detail {
+  margin: 0;
+}
+
+.storage__verdict {
+  font-weight: 600;
+  color: var(--accent);
+}
+
+/* Anything but "durable" means the browser can delete the log, which is the one
+   failure this app cannot recover from. */
+.storage--evictable .storage__verdict,
+.storage--unknown .storage__verdict {
+  color: var(--alarm);
 }

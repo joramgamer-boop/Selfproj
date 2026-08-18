@@ -2,7 +2,22 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- viewport-fit=cover so the standalone app can paint under the notch, with
+         the safe-area insets in index.css keeping content clear of it. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <!-- Mirrors --ground in src/index.css and palette.js; change them together. -->
+    <meta name="theme-color" content="#101418" />
+    <meta
+      name="description"
+      content="Sizes the trade before you take it, and keeps the log on your phone."
+    />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <!-- iOS reads its own metas rather than the manifest's display mode. -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Trades" />
     <title>Trade Tracker</title>
   </head>
   <body>
