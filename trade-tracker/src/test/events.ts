@@ -1,4 +1,5 @@
 import type { PlanCreated, PositionClosed, TradeTrackerEvent } from '../core/events';
+import type { Violation } from '../core/rules';
 
 /** Shared across all three seams so a stored event looks the same everywhere. */
 export function deposit(amount: number, at: string): TradeTrackerEvent {
@@ -21,12 +22,17 @@ export function planCreated(
     leverage: 5,
     liquidationPrice: 80,
     riskFraction: 0.02,
+    violations: [],
     ...fields,
   };
 }
 
-export function positionOpened(at: string, planId = 'plan-1'): TradeTrackerEvent {
-  return { type: 'PositionOpened', at, planId };
+export function positionOpened(
+  at: string,
+  planId = 'plan-1',
+  violations: Violation[] = [],
+): TradeTrackerEvent {
+  return { type: 'PositionOpened', at, planId, violations };
 }
 
 /**

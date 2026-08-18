@@ -2,6 +2,7 @@ import type { PositionClosed, PositionOpened, TradeTrackerEvent } from './events
 import { toCents } from './money';
 import type { PlanInputs } from './plan';
 import { DEFAULT_RISK_FRACTION } from './risk';
+import type { Violation } from './rules';
 import { solveSettlement } from './settlement';
 import { solveSizing } from './sizing';
 import type { ClosingRecord } from './trade';
@@ -42,6 +43,13 @@ export interface Plan extends PlanInputs {
   /** Set when the Plan used more Risk than the default in force at the time. */
   readonly aboveDefaultRisk: boolean;
   readonly status: PlanStatus;
+  /**
+   * Every Rule overridden anywhere in this Plan's life — sizing it, taking it
+   * live — in the order the overrides happened. Unlike the figures above this
+   * one grows, because a Plan can break a Rule at each step it takes, and the
+   * Trade it closes as carries the lot.
+   */
+  readonly violations: readonly Violation[];
 }
 
 /** A Plan that is live on the exchange. It ends by closing into a Trade. */
@@ -95,8 +103,11 @@ export const emptyState: DerivedState = {
 
 /** A Plan being folded, before it is known how the Plan turned out. */
 interface PlanRecord {
-  readonly figures: Omit<Plan, 'status'>;
+  readonly figures: Omit<Plan, 'status' | 'violations'>;
   status: PlanStatus;
+  /** Appended to as the log goes on, so a snapshot taken at the close holds
+   *  the Violations from every step, not only from sizing. */
+  readonly violations: Violation[];
 }
 
 /**
@@ -113,7 +124,13 @@ export function deriveState(events: readonly TradeTrackerEvent[]): DerivedState 
   let balance = 0;
   let riskDefault = DEFAULT_RISK_FRACTION;
 
-  const asPlan = (record: PlanRecord): Plan => ({ ...record.figures, status: record.status });
+  // Copied rather than shared: a Position or Trade holds the Plan as it stood
+  // when it was taken, and a Violation recorded later must not appear on it.
+  const asPlan = (record: PlanRecord): Plan => ({
+    ...record.figures,
+    status: record.status,
+    violations: [...record.violations],
+  });
 
   events.forEach((event, seq) => {
     switch (event.type) {
@@ -138,6 +155,10 @@ export function deriveState(events: readonly TradeTrackerEvent[]): DerivedState 
         }
         records.set(event.id, {
           status: 'planned',
+          // Recorded, never re-judged: whether these Rules would still block
+          // this Plan today is beside the point — they blocked it then, and
+          // the trader said why.
+          violations: [...event.violations],
           figures: {
             id: event.id,
             at: event.at,
@@ -159,6 +180,7 @@ export function deriveState(events: readonly TradeTrackerEvent[]): DerivedState 
       case 'PositionOpened': {
         const record = planOf(records, event);
         record.status = 'open';
+        record.violations.push(...event.violations);
         open.set(event.planId, { plan: asPlan(record), openedAt: event.at });
         break;
       }

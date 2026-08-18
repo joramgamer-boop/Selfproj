@@ -4,10 +4,26 @@ import type { IdSource } from './ids';
 import { isRecordableAmount, toCents } from './money';
 import type { PlanInputs } from './plan';
 import { isPlannableRiskFraction, roundRiskFraction } from './risk';
+import { judge, type RuleVerdict, type Violation } from './rules';
 import { closeOut } from './settlement';
 import { sizeNewPlan } from './sizing';
 import type { DerivedState, Position } from './state';
 import type { ProposedClose } from './trade';
+
+/**
+ * Proceeding past a blocking Rule by typing why. Always on offer, because the
+ * app has no power over the exchange: a Rule that could never be broken would
+ * be bypassed by simply not opening the app, and an unlogged trade is worse
+ * than a logged Violation — it also corrupts every Balance derived after it.
+ */
+export interface Override {
+  readonly reason: string;
+}
+
+/** A command the trader can insist on. Absent, the Rules have the last word. */
+interface Overridable {
+  readonly override?: Override | null;
+}
 
 export interface RecordDeposit {
   readonly type: 'RecordDeposit';
@@ -15,12 +31,12 @@ export interface RecordDeposit {
 }
 
 /** Everything the trader types on the Plan screen. Notional is not offered. */
-export interface CreatePlan extends PlanInputs {
+export interface CreatePlan extends PlanInputs, Overridable {
   readonly type: 'CreatePlan';
 }
 
 /** Taking a Plan live. Nothing to type: the Plan already holds the figures. */
-export interface OpenPosition {
+export interface OpenPosition extends Overridable {
   readonly type: 'OpenPosition';
   readonly planId: string;
 }
@@ -47,11 +63,18 @@ export type Command =
   | SetRiskDefault;
 
 /**
- * What evaluating a command produced: the events to append, or a refusal.
- * Rule verdicts — blocking but overridable — join this union later.
+ * What evaluating a command produced: the events to append, the Rules that
+ * block it, or a flat refusal.
+ *
+ * The middle one is the interesting one. A block is the app's whole authority
+ * and the whole of it — the trader can come back with an Override and the
+ * command goes through carrying a Violation. A rejection is different: it is
+ * a command that could not be carried out at all, and no reason typed into it
+ * would produce anything to record.
  */
 export type Evaluation =
   | { readonly outcome: 'append'; readonly events: readonly TradeTrackerEvent[] }
+  | { readonly outcome: 'blocked'; readonly verdicts: readonly RuleVerdict[] }
   | { readonly outcome: 'rejected'; readonly reason: string };
 
 /** What a command needs from outside the log in order to stamp its events. */
@@ -84,6 +107,36 @@ export function evaluate(
   }
 }
 
+/**
+ * What the Rules say about a command, once the Override on it — if there is
+ * one — has been taken into account. Clearing carries the Violations to write
+ * onto the resulting event, which is empty unless something was overridden.
+ */
+type Ruling =
+  | { readonly outcome: 'clear'; readonly violations: readonly Violation[] }
+  | { readonly outcome: 'blocked'; readonly verdicts: readonly RuleVerdict[] }
+  | { readonly outcome: 'rejected'; readonly reason: string };
+
+function rule(state: DerivedState, command: Command): Ruling {
+  const verdicts = judge(state, command);
+  if (verdicts.length === 0) return { outcome: 'clear', violations: [] };
+
+  const override = 'override' in command ? (command.override ?? null) : null;
+  if (!override) return { outcome: 'blocked', verdicts };
+
+  // An Override with nothing typed into it is not a record of anything, and a
+  // Violation nobody can read later is the same as no Rule at all.
+  const reason = override.reason.trim();
+  if (reason === '') {
+    return { outcome: 'rejected', reason: 'Say why you are proceeding — an Override is a record.' };
+  }
+
+  // One reason answers every Rule the command broke, because the trader
+  // proceeded once. Each Rule gets its own Violation so compliance stays
+  // countable per Rule.
+  return { outcome: 'clear', violations: verdicts.map((verdict) => ({ ruleId: verdict.ruleId, reason })) };
+}
+
 function evaluateRecordDeposit(command: RecordDeposit, { clock }: CommandContext): Evaluation {
   if (!isRecordableAmount(command.amount)) {
     return { outcome: 'rejected', reason: 'A Deposit must be an amount greater than zero.' };
@@ -109,9 +162,17 @@ function evaluateCreatePlan(
   { clock, ids }: CommandContext,
 ): Evaluation {
   const riskFraction = roundRiskFraction(command.riskFraction);
+  const proposed = { ...command, riskFraction };
+
+  // The Rules get first word, so what the trader reads is the Rule they broke
+  // rather than the arithmetic downstream of it.
+  const ruling = rule(state, proposed);
+  if (ruling.outcome !== 'clear') return ruling;
+
   // The same gate the live preview went through, so what gets written is the
-  // size the trader was looking at when they committed.
-  const sizing = sizeNewPlan(state.balance, { ...command, riskFraction });
+  // size the trader was looking at when they committed. An Override does not
+  // reach this: a Plan the app cannot solve a size for has nothing to record.
+  const sizing = sizeNewPlan(state.balance, proposed);
   if (sizing.outcome !== 'sized') {
     return { outcome: 'rejected', reason: sizing.reason };
   }
@@ -129,6 +190,7 @@ function evaluateCreatePlan(
         leverage: command.leverage,
         liquidationPrice: command.liquidationPrice,
         riskFraction,
+        violations: ruling.violations,
       },
     ],
   };
@@ -147,15 +209,23 @@ function evaluateOpenPosition(
   if (plan.status === 'closed') {
     return { outcome: 'rejected', reason: 'That Plan has already closed as a Trade.' };
   }
-  // Nothing here refuses a second Position while one is open, though the
-  // framework allows exactly one. That is a Rule, and a Rule of this app
-  // blocks *and can be overridden with a typed reason* (ticket 05) — shipping
-  // the block without the override would do the one thing the app must never
-  // do, which is push the trade off the record.
+
+  // A second Position while one is live is the Rule's to judge, and only after
+  // the refusals above: reopening the *same* Plan is not a Rule to argue with,
+  // it is a tap that means nothing, and it must not be offered an Override.
+  const ruling = rule(state, command);
+  if (ruling.outcome !== 'clear') return ruling;
 
   return {
     outcome: 'append',
-    events: [{ type: 'PositionOpened', at: clock.now().toISOString(), planId: command.planId }],
+    events: [
+      {
+        type: 'PositionOpened',
+        at: clock.now().toISOString(),
+        planId: command.planId,
+        violations: ruling.violations,
+      },
+    ],
   };
 }
 

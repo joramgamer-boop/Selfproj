@@ -12,6 +12,7 @@ import { formatMoney } from '../format';
 import type { RecordResult } from '../useTradeTracker';
 import { useSubmission } from '../useSubmission';
 import Field from './Field';
+import RuleBlock from './RuleBlock';
 
 interface PlanSizerProps {
   balance: number;
@@ -45,8 +46,8 @@ export default function PlanSizer({ balance, riskDefault, onCreate }: PlanSizerP
     liquidationPrice: Number(fields.liquidationPrice),
     riskFraction: riskFractionOf(Number(riskPercent)),
   };
-  const { saving, rejection, clearRejection, onSubmit } = useSubmission(
-    () => onCreate({ type: 'CreatePlan', ...inputs }),
+  const { saving, rejection, block, reason, setReason, clearProblem, onSubmit } = useSubmission(
+    (override) => onCreate({ type: 'CreatePlan', ...inputs, override }),
     () => {
       setFields(blank);
       setTypedRisk(null);
@@ -65,7 +66,7 @@ export default function PlanSizer({ balance, riskDefault, onCreate }: PlanSizerP
     return (event) => {
       const { value } = event.target;
       setFields((current) => ({ ...current, [field]: value }));
-      clearRejection();
+      clearProblem();
     };
   };
 
@@ -83,7 +84,7 @@ export default function PlanSizer({ balance, riskDefault, onCreate }: PlanSizerP
             aria-pressed={direction === option}
             onClick={() => {
               setDirection(option);
-              clearRejection();
+              clearProblem();
             }}
           >
             {option === 'long' ? 'Long' : 'Short'}
@@ -115,7 +116,7 @@ export default function PlanSizer({ balance, riskDefault, onCreate }: PlanSizerP
           step={0.1}
           onChange={(event) => {
             setTypedRisk(event.target.value);
-            clearRejection();
+            clearProblem();
           }}
         />
       </div>
@@ -141,8 +142,14 @@ export default function PlanSizer({ balance, riskDefault, onCreate }: PlanSizerP
         <p className="sizing__assumption">Isolated margin assumed.</p>
       </section>
 
+      {block && (
+        <RuleBlock verdicts={block} id="plan-override" reason={reason} onReason={setReason} />
+      )}
+
+      {/* The same button either way, so there is never a choice between two.
+          Once blocked it says what pressing it now costs. */}
       <button className="sizer__submit" type="submit" disabled={saving}>
-        Create Plan
+        {block ? 'Create Plan anyway' : 'Create Plan'}
       </button>
 
       {problem && (

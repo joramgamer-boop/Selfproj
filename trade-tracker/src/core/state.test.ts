@@ -97,6 +97,7 @@ describe('a Plan on the record', () => {
         oneR: 10,
         aboveDefaultRisk: false,
         status: 'planned',
+        violations: [],
       },
     ]);
   });

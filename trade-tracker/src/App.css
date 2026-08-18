@@ -624,3 +624,86 @@
 .plan__take:disabled {
   opacity: 0.6;
 }
+
+/* A block. Bordered in the alarm colour and sitting immediately above the
+   button it qualifies, so the Rule and the cost of ignoring it are read in
+   the same glance as the tap that ignores it. */
+.block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+  padding: 0.875rem 1rem;
+  background: var(--panel);
+  border: 1px solid var(--alarm);
+  border-radius: 0.75rem;
+}
+
+.block__label {
+  margin: 0;
+  font-size: 0.75rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--alarm);
+}
+
+.block__rules {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+}
+
+.block__rule {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.block__rule-name {
+  font-weight: 600;
+}
+
+.block__rule-why {
+  font-size: 0.875rem;
+  color: var(--ink-dim);
+}
+
+.block__reason {
+  resize: vertical;
+}
+
+.block__price {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--ink-dim);
+}
+
+/* A Violation on a row. Deliberately not dismissible and deliberately loud:
+   the whole trade this makes is that the app lets you through and the record
+   keeps it. */
+.violations {
+  margin: 0.375rem 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.violation {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  font-size: 0.75rem;
+}
+
+.violation__rule {
+  font-weight: 600;
+  color: var(--alarm);
+}
+
+.violation__reason {
+  color: var(--ink-dim);
+}

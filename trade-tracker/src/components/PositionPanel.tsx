@@ -5,6 +5,7 @@ import { formatWhen } from '../format';
 import type { RecordResult } from '../useTradeTracker';
 import ClosePositionForm from './ClosePositionForm';
 import PlanFigures from './PlanFigures';
+import Violations from './Violations';
 
 interface PositionPanelProps {
   position: Position;
@@ -29,6 +30,9 @@ export default function PositionPanel({ position, clock, onClose }: PositionPane
         <span>Liquidation {plan.liquidationPrice}</span>
         <span>Opened {formatWhen(position.openedAt)}</span>
       </p>
+      {/* On the live Position too: if this trade was taken past a Rule, that
+          is worth reading while it is still costing something. */}
+      <Violations violations={plan.violations} />
       <ClosePositionForm position={position} clock={clock} onClose={onClose} />
     </section>
   );

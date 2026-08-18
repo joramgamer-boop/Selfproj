@@ -4,6 +4,8 @@ import { formatDirection, formatRiskPercent, formatWhen } from '../format';
 import type { RecordResult } from '../useTradeTracker';
 import { useSubmission } from '../useSubmission';
 import PlanFigures from './PlanFigures';
+import RuleBlock from './RuleBlock';
+import Violations from './Violations';
 
 /** How a Plan that is no longer merely a Plan reads on its row. */
 const outcomes: Partial<Record<Plan['status'], string>> = {
@@ -38,8 +40,8 @@ export default function PlanList({ plans, onOpen }: PlanListProps) {
 }
 
 function PlanRow({ plan, onOpen }: { plan: Plan; onOpen: PlanListProps['onOpen'] }) {
-  const { saving, rejection, onSubmit } = useSubmission(
-    () => onOpen({ type: 'OpenPosition', planId: plan.id }),
+  const { saving, rejection, block, reason, setReason, onSubmit } = useSubmission(
+    (override) => onOpen({ type: 'OpenPosition', planId: plan.id, override }),
     () => {},
   );
 
@@ -52,13 +54,24 @@ function PlanRow({ plan, onOpen }: { plan: Plan; onOpen: PlanListProps['onOpen']
         <span>{formatWhen(plan.at)}</span>
       </p>
       {plan.aboveDefaultRisk && <p className="plan__flag">Above default Risk</p>}
+      <Violations violations={plan.violations} />
       {outcomes[plan.status] && <p className="plan__outcome">{outcomes[plan.status]}</p>}
       {plan.status === 'planned' && (
         // A form rather than a bare button, so taking a Plan live gets the same
         // one-tap-one-record guard everything else that writes to the log has.
+        // The button stays on offer while another Position is live: the Rule
+        // against that is the core's to give, along with the way past it.
         <form className="plan__open" onSubmit={onSubmit}>
+          {block && (
+            <RuleBlock
+              verdicts={block}
+              id={`open-override-${plan.id}`}
+              reason={reason}
+              onReason={setReason}
+            />
+          )}
           <button className="plan__take" type="submit" disabled={saving}>
-            Open as Position
+            {block ? 'Open as Position anyway' : 'Open as Position'}
           </button>
           {rejection && (
             <p className="plan__rejection" role="alert">

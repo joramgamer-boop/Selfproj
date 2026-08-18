@@ -392,15 +392,10 @@ describe('taking a Plan live and closing it', () => {
       type: 'PositionOpened',
       at: '2026-05-04T12:30:00.000Z',
       planId: 'plan-1',
+      violations: [],
     });
   });
 
-  it('offers nothing to open while a Position is already live', async () => {
-    renderApp(live());
-    await screen.findByLabelText(/open position/i);
-
-    expect(screen.queryByRole('button', { name: /open as position/i })).not.toBeInTheDocument();
-  });
 
   it('closes a winner, moving the Balance by the P&L net of fees', async () => {
     const { log } = renderApp(live());
@@ -481,5 +476,77 @@ describe('taking a Plan live and closing it', () => {
       at: '2026-05-04T12:30:00.000Z',
       closedAt: '2026-01-03T15:00:00.000Z',
     });
+  });
+});
+
+describe('hitting a Rule and going through it anyway', () => {
+  const funded = () => [deposit(500, '2026-01-01T09:00:00.000Z')];
+
+  it('blocks a Stop past halfway to liquidation, then records the Override as a Violation', async () => {
+    const { log } = renderApp(funded());
+    const user = userEvent.setup();
+
+    // Entry 100, liquidation 80: a Stop at 85 sits 75% of the way there.
+    await user.type(await screen.findByLabelText(/entry price/i), '100');
+    await user.type(screen.getByLabelText(/^stop$/i), '85');
+    await user.type(screen.getByLabelText(/leverage/i), '5');
+    await user.type(screen.getByLabelText(/liquidation price/i), '80');
+    await user.click(screen.getByRole('button', { name: /create plan/i }));
+
+    const block = await screen.findByLabelText(/blocked by a rule/i);
+    expect(block).toHaveTextContent(/liquidation buffer/i);
+    expect(block).toHaveTextContent('75%');
+    expect(log).toHaveLength(1);
+
+    await user.type(
+      screen.getByLabelText(/why are you doing it anyway/i),
+      'Swing low is there; taking it.',
+    );
+    await user.click(screen.getByRole('button', { name: /create plan anyway/i }));
+
+    const plan = await screen.findByRole('listitem', { name: /plan/i });
+    expect(plan).toHaveTextContent(/violation/i);
+    expect(plan).toHaveTextContent('Swing low is there; taking it.');
+    expect(log[1]).toMatchObject({
+      type: 'PlanCreated',
+      violations: [
+        { ruleId: 'liquidation-buffer', reason: 'Swing low is there; taking it.' },
+      ],
+    });
+  });
+
+  it('blocks a second Position while one is live, and takes a reason for it', async () => {
+    const { log } = renderApp([
+      ...funded(),
+      planCreated({ at: '2026-01-02T09:00:00.000Z' }),
+      positionOpened('2026-01-03T09:00:00.000Z'),
+      planCreated({ at: '2026-01-02T10:00:00.000Z', id: 'plan-2' }),
+    ]);
+    const user = userEvent.setup();
+
+    // Still offered, unlike a Plan already live: the block is the core's to
+    // give, along with the way past it.
+    await user.click(await screen.findByRole('button', { name: /open as position/i }));
+
+    expect(await screen.findByLabelText(/blocked by a rule/i)).toHaveTextContent(
+      /one position at a time/i,
+    );
+    expect(log).toHaveLength(4);
+
+    await user.type(
+      screen.getByLabelText(/why are you doing it anyway/i),
+      'Hedge against the first.',
+    );
+    await user.click(screen.getByRole('button', { name: /open as position anyway/i }));
+
+    await waitFor(() => expect(log).toHaveLength(5));
+    expect(log[4]).toMatchObject({
+      type: 'PositionOpened',
+      planId: 'plan-2',
+      violations: [{ ruleId: 'one-position-at-a-time', reason: 'Hedge against the first.' }],
+    });
+    const positions = await screen.findAllByLabelText(/open position/i);
+    expect(positions).toHaveLength(2);
+    expect(positions[1]).toHaveTextContent(/violation — one position at a time/i);
   });
 });

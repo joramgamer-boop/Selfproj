@@ -104,6 +104,7 @@ describe('creating a Plan', () => {
           leverage: 5,
           liquidationPrice: 80,
           riskFraction: 0.02,
+          violations: [],
         },
       ],
     });
@@ -224,7 +225,7 @@ describe('taking a Plan live', () => {
     expect(evaluate(sized, { type: 'OpenPosition', planId: 'plan-1' }, context())).toEqual({
       outcome: 'append',
       events: [
-        { type: 'PositionOpened', at: '2026-05-04T12:30:00.000Z', planId: 'plan-1' },
+        { type: 'PositionOpened', at: '2026-05-04T12:30:00.000Z', planId: 'plan-1', violations: [] },
       ],
     });
   });

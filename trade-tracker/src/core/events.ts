@@ -1,4 +1,5 @@
 import type { PlanInputs } from './plan';
+import type { Violation } from './rules';
 import type { ClosingRecord } from './trade';
 
 /**
@@ -26,6 +27,13 @@ export interface PlanCreated extends PlanInputs {
   readonly type: 'PlanCreated';
   readonly at: string;
   readonly id: string;
+  /**
+   * One per Rule overridden to create this Plan, each carrying the reason
+   * typed at the time; empty when the Plan broke none. A Violation becomes
+   * permanent here, written into the log beside the Plan it belongs to, so
+   * nothing appended later can separate the two.
+   */
+  readonly violations: readonly Violation[];
 }
 
 /** A settings change, kept in the log so the default has a history. */
@@ -40,6 +48,9 @@ export interface PositionOpened {
   readonly type: 'PositionOpened';
   readonly at: string;
   readonly planId: string;
+  /** One per Rule overridden to take this Plan live — opening while another
+   *  Position is already running, above all. */
+  readonly violations: readonly Violation[];
 }
 
 /**
