@@ -496,7 +496,7 @@ describe('hitting a Rule and going through it anyway', () => {
     const block = await screen.findByLabelText(/blocked by a rule/i);
     expect(block).toHaveTextContent(/liquidation buffer/i);
     expect(block).toHaveTextContent('75%');
-    expect(log).toHaveLength(1);
+    expect(screen.queryByRole('listitem', { name: /plan/i })).not.toBeInTheDocument();
 
     await user.type(
       screen.getByLabelText(/why are you doing it anyway/i),
@@ -505,14 +505,16 @@ describe('hitting a Rule and going through it anyway', () => {
     await user.click(screen.getByRole('button', { name: /create plan anyway/i }));
 
     const plan = await screen.findByRole('listitem', { name: /plan/i });
-    expect(plan).toHaveTextContent(/violation/i);
+    expect(plan).toHaveTextContent(/violation — the stop stays inside the liquidation buffer/i);
     expect(plan).toHaveTextContent('Swing low is there; taking it.');
-    expect(log[1]).toMatchObject({
-      type: 'PlanCreated',
-      violations: [
-        { ruleId: 'liquidation-buffer', reason: 'Swing low is there; taking it.' },
-      ],
-    });
+    expect(log).toContainEqual(
+      expect.objectContaining({
+        type: 'PlanCreated',
+        violations: [
+          { ruleId: 'liquidation-buffer', reason: 'Swing low is there; taking it.' },
+        ],
+      }),
+    );
   });
 
   it('blocks a second Position while one is live, and takes a reason for it', async () => {
@@ -531,7 +533,7 @@ describe('hitting a Rule and going through it anyway', () => {
     expect(await screen.findByLabelText(/blocked by a rule/i)).toHaveTextContent(
       /one position at a time/i,
     );
-    expect(log).toHaveLength(4);
+    expect(await screen.findAllByLabelText(/open position/i)).toHaveLength(1);
 
     await user.type(
       screen.getByLabelText(/why are you doing it anyway/i),
@@ -539,14 +541,17 @@ describe('hitting a Rule and going through it anyway', () => {
     );
     await user.click(screen.getByRole('button', { name: /open as position anyway/i }));
 
-    await waitFor(() => expect(log).toHaveLength(5));
-    expect(log[4]).toMatchObject({
-      type: 'PositionOpened',
-      planId: 'plan-2',
-      violations: [{ ruleId: 'one-position-at-a-time', reason: 'Hedge against the first.' }],
-    });
     const positions = await screen.findAllByLabelText(/open position/i);
     expect(positions).toHaveLength(2);
     expect(positions[1]).toHaveTextContent(/violation — one position at a time/i);
+    await waitFor(() =>
+      expect(log).toContainEqual(
+        expect.objectContaining({
+          type: 'PositionOpened',
+          planId: 'plan-2',
+          violations: [{ ruleId: 'one-position-at-a-time', reason: 'Hedge against the first.' }],
+        }),
+      ),
+    );
   });
 });

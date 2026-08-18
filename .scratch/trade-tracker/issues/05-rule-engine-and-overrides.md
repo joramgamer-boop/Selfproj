@@ -21,8 +21,7 @@ worse than a logged Violation because it also corrupts the Ledger.
       the liquidation price is blocked
 - [x] Rule: opening a Position while another is open is blocked
 - [x] Any block can be overridden by typing a reason; the reason is required and
-      cannot be empty — with one documented exception, the no-Stop block (see
-      the comments below)
+      cannot be empty
 - [x] An override records a Violation permanently on the resulting Plan or Trade,
       naming the Rule and carrying the reason
 - [x] Core tests cover each Rule at its boundary, the override path, and that a
@@ -62,17 +61,22 @@ Plan today. Re-adjudicating would let a later change of policy make an already
 written row unreadable — the same reason `solveSizing` and `solveSettlement`
 are arithmetic-only.
 
-**Deliberate departure: the no-Stop block is the one an Override cannot get
-past.** Every other block goes through with a reason. This one is blocked by
-the Rule, and if the trader overrides it the sizing then rejects it, because
-`Notional = Risk ÷ Stop distance` has no answer without a Stop and 1R — the
-denominator of every figure the log exists to produce (ADR-0001) — would be a
-fiction. Story 11 is the only story in spec.md that says "**unable** to" rather
-than "blocked", which reads as the same judgement. The Rule's own explanation
-says so up front rather than letting the trader discover it after typing.
-The designed route for this case is ticket 06's Abandoned Plan reason "no valid
-stop", which keeps the skip in the log as data. Challenge this if the ticket
-meant the override to size a Plan against a Stop of zero.
+**The no-Stop Rule refuses rather than blocks, and says so in its own data.**
+Every block is overridable — story 17's "override **any** block" holds without
+exception, because a missing Stop no longer produces a block. `Rule` carries an
+`overridable` flag alongside the pre-fact/post-fact classification, and
+`stop-required` is the only Rule with it false: `Notional = Risk ÷ Stop
+distance` has no answer without a Stop, so there would be no Plan for the
+reason to be attached to. `applyRules` turns such a verdict into a `rejected`,
+not a `blocked`, so the app never renders a "why are you doing it anyway?" box
+above a button that cannot work — a dead end in the seconds before a trade is
+worse than a block. Story 11 is also the only story in spec.md that says
+"**unable** to" rather than "blocked", which reads as the same judgement. The
+designed route for this case is ticket 06's Abandoned Plan reason "no valid
+stop", which keeps the skip in the log as data.
+
+This is a third axis the spec did not name, so challenge it if the intent was
+that a Plan may be sized against a Stop of zero.
 
 **The Open button stays on offer while a Position is live.** Ticket 04 hid it;
 hiding a block is the one thing this app must not do, because the trade then
@@ -85,5 +89,30 @@ block comes back and renders, and the same button — now reading "Create Plan
 anyway" — sends again with the typed reason. The reason is passed through
 untouched; whether it is empty is the core's call and is tested there.
 
-`npm run lint`, `npm run typecheck`, `npm test` (180 tests) and `npm run build`
+**From code review.** Standards and Spec axes ran in parallel.
+
+- The no-Stop dead end was the most serious finding and is gone (above). The
+  Spec axis put it exactly right: the outcome was defensible, the modelling was
+  not — a `blocked` that no Override could answer is the dead end story 17
+  forbids, and the fix was to model the distinction rather than document it.
+- `RuleVerdict` no longer carries the Rule's name or its timing. The name went
+  because `ruleName(ruleId)` already turned an id into words for `Violations`,
+  and two paths to the same string drift; the timing went because nothing reads
+  it — it belongs on `Rule`, where the spec puts it, until ticket 08.
+- `RuleBlock` and the relabelled submit button were the same decision written
+  in two components. They are now one `Override` — the glossary's own word for
+  what it does.
+- Renamed away from glossary nouns: `rule()`/`Ruling` in `commands.ts` are
+  `applyRules()`/`RuleOutcome`, and `clearProblem` is `clearOutcome`.
+- The two seam-2 journeys stopped reading the log by index, which spec.md's
+  Testing Decisions forbid as an ordering artifact.
+- Kept, with reasons: the per-verdict command-type guards in `rules.ts` (the
+  alternative, an `appliesTo` field, needs a cast to erase the generic and
+  trades a checked narrowing for an unchecked one); `Violations` rendered on
+  rows, which is ticket 09's story 39 but is the only way this ticket's
+  "permanently attached" is visible at all; and both journeys, because the two
+  forms are separately wired and the second replaces a ticket-04 test that
+  pinned the now-removed hiding of the Open button.
+
+`npm run lint`, `npm run typecheck`, `npm test` (181 tests) and `npm run build`
 all pass.

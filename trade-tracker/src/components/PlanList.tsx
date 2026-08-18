@@ -4,7 +4,7 @@ import { formatDirection, formatRiskPercent, formatWhen } from '../format';
 import type { RecordResult } from '../useTradeTracker';
 import { useSubmission } from '../useSubmission';
 import PlanFigures from './PlanFigures';
-import RuleBlock from './RuleBlock';
+import Override from './Override';
 import Violations from './Violations';
 
 /** How a Plan that is no longer merely a Plan reads on its row. */
@@ -62,17 +62,15 @@ function PlanRow({ plan, onOpen }: { plan: Plan; onOpen: PlanListProps['onOpen']
         // The button stays on offer while another Position is live: the Rule
         // against that is the core's to give, along with the way past it.
         <form className="plan__open" onSubmit={onSubmit}>
-          {block && (
-            <RuleBlock
-              verdicts={block}
-              id={`open-override-${plan.id}`}
-              reason={reason}
-              onReason={setReason}
-            />
-          )}
-          <button className="plan__take" type="submit" disabled={saving}>
-            {block ? 'Open as Position anyway' : 'Open as Position'}
-          </button>
+          <Override
+            block={block}
+            label="Open as Position"
+            className="plan__take"
+            saving={saving}
+            id={`open-override-${plan.id}`}
+            reason={reason}
+            onReason={setReason}
+          />
           {rejection && (
             <p className="plan__rejection" role="alert">
               {rejection}

@@ -29,7 +29,14 @@ describe('the Rules themselves', () => {
       expect(rule.id).toEqual(expect.any(String));
       expect(rule.name).toEqual(expect.any(String));
       expect(['pre-fact', 'post-fact']).toContain(rule.timing);
+      expect(rule.overridable).toEqual(expect.any(Boolean));
     });
+  });
+
+  it('leaves a way through every Rule but the one that would leave nothing to record', () => {
+    expect(RULES.filter((rule) => !rule.overridable).map((rule) => rule.id)).toEqual([
+      'stop-required',
+    ]);
   });
 
   it('gives every Rule an id of its own, since a Violation names one', () => {
@@ -38,22 +45,30 @@ describe('the Rules themselves', () => {
 });
 
 describe('the Rule that a Plan needs a Stop', () => {
-  it('blocks a Plan with no Stop, naming the Rule', () => {
-    const evaluation = evaluate(sized, { ...aLong, stopPrice: Number.NaN }, context());
-
-    expect(evaluation).toMatchObject({
-      outcome: 'blocked',
-      verdicts: [{ ruleId: 'stop-required' }],
+  it('refuses a Plan with no Stop, in the Rule’s words', () => {
+    expect(evaluate(sized, { ...aLong, stopPrice: Number.NaN }, context())).toEqual({
+      outcome: 'rejected',
+      reason: expect.stringMatching(/without a stop there is no 1R/i),
     });
   });
 
-  it('blocks a Plan whose Stop field was left empty', () => {
+  it('refuses a Plan whose Stop field was left empty', () => {
     // A blank number field arrives as zero, which is not a Stop — it is the
     // absence of one.
     expect(evaluate(sized, { ...aLong, stopPrice: 0 }, context())).toMatchObject({
-      outcome: 'blocked',
-      verdicts: [expect.objectContaining({ ruleId: 'stop-required' })],
+      outcome: 'rejected',
     });
+  });
+
+  it('offers no way through, because there would be no Plan to record', () => {
+    // The one Rule an Override cannot answer. Offering the box would put the
+    // trader in a dead end at the worst possible moment.
+    expect(RULES.find((candidate) => candidate.id === 'stop-required')).toMatchObject({
+      overridable: false,
+    });
+    expect(
+      evaluate(sized, { ...aLong, stopPrice: 0, override: { reason: 'No stop, going in.' } }, context()),
+    ).toMatchObject({ outcome: 'rejected' });
   });
 
   it('lets a Plan with a Stop through', () => {
@@ -175,15 +190,6 @@ describe('overriding a block', () => {
     expect(
       evaluate(sized, { ...blocked, override: { reason: `  ${reason}  ` } }, context()),
     ).toMatchObject({ events: [{ violations: [{ reason }] }] });
-  });
-
-  it('cannot rescue a Plan with no Stop, because there is no size to record', () => {
-    // The one block an Override cannot get past. Without a Stop there is no
-    // distance to solve a Notional from and no 1R to measure the result in,
-    // so there is no Plan for the reason to be attached to.
-    expect(
-      evaluate(sized, { ...aLong, stopPrice: 0, override: { reason } }, context()),
-    ).toMatchObject({ outcome: 'rejected', reason: expect.stringMatching(/stop must be/i) });
   });
 
   it('records no Violation when nothing was blocking', () => {

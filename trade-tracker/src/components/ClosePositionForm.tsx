@@ -46,7 +46,7 @@ export default function ClosePositionForm({ position, clock, onClose }: ClosePos
   // which may have been hours ago — the point of the field is a true hold.
   const [correctingSince, setCorrectingSince] = useState<Date | null>(null);
 
-  const { saving, rejection, clearProblem, onSubmit } = useSubmission(
+  const { saving, rejection, clearOutcome, onSubmit } = useSubmission(
     () =>
       onClose({
         type: 'ClosePosition',
@@ -80,7 +80,7 @@ export default function ClosePositionForm({ position, clock, onClose }: ClosePos
   const set = (field: keyof typeof blank) => {
     return (event: ChangeEvent<Typed>) => {
       setFields((current) => ({ ...current, [field]: event.target.value }));
-      clearProblem();
+      clearOutcome();
     };
   };
 
@@ -159,7 +159,7 @@ export default function ClosePositionForm({ position, clock, onClose }: ClosePos
             value={typedEntry ?? String(position.plan.entryPrice)}
             onChange={(event) => {
               setTypedEntry(event.target.value);
-              clearProblem();
+              clearOutcome();
             }}
           />
           <Toggle
@@ -175,7 +175,7 @@ export default function ClosePositionForm({ position, clock, onClose }: ClosePos
             value={typedOpenedAt ?? toDateTimeInput(position.openedAt)}
             onChange={(event) => {
               setTypedOpenedAt(event.target.value);
-              clearProblem();
+              clearOutcome();
             }}
           />
           <Field
@@ -185,7 +185,7 @@ export default function ClosePositionForm({ position, clock, onClose }: ClosePos
             value={typedClosedAt ?? toDateTimeInput(correctingSince)}
             onChange={(event) => {
               setTypedClosedAt(event.target.value);
-              clearProblem();
+              clearOutcome();
             }}
           />
         </div>

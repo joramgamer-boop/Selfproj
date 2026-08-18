@@ -112,14 +112,21 @@ export function evaluate(
  * one — has been taken into account. Clearing carries the Violations to write
  * onto the resulting event, which is empty unless something was overridden.
  */
-type Ruling =
+type RuleOutcome =
   | { readonly outcome: 'clear'; readonly violations: readonly Violation[] }
   | { readonly outcome: 'blocked'; readonly verdicts: readonly RuleVerdict[] }
   | { readonly outcome: 'rejected'; readonly reason: string };
 
-function rule(state: DerivedState, command: Command): Ruling {
+function applyRules(state: DerivedState, command: Command): RuleOutcome {
   const verdicts = judge(state, command);
   if (verdicts.length === 0) return { outcome: 'clear', violations: [] };
+
+  // A Rule no reason can answer refuses outright rather than blocking. It
+  // would leave nothing to attach the reason to, so a block would offer a way
+  // through that does not exist — the one thing worse than a block, because
+  // the trader spends the moment before a trade typing into a dead end.
+  const unanswerable = verdicts.find((verdict) => !verdict.overridable);
+  if (unanswerable) return { outcome: 'rejected', reason: unanswerable.explanation };
 
   const override = 'override' in command ? (command.override ?? null) : null;
   if (!override) return { outcome: 'blocked', verdicts };
@@ -166,8 +173,8 @@ function evaluateCreatePlan(
 
   // The Rules get first word, so what the trader reads is the Rule they broke
   // rather than the arithmetic downstream of it.
-  const ruling = rule(state, proposed);
-  if (ruling.outcome !== 'clear') return ruling;
+  const ruled = applyRules(state, proposed);
+  if (ruled.outcome !== 'clear') return ruled;
 
   // The same gate the live preview went through, so what gets written is the
   // size the trader was looking at when they committed. An Override does not
@@ -190,7 +197,7 @@ function evaluateCreatePlan(
         leverage: command.leverage,
         liquidationPrice: command.liquidationPrice,
         riskFraction,
-        violations: ruling.violations,
+        violations: ruled.violations,
       },
     ],
   };
@@ -213,8 +220,8 @@ function evaluateOpenPosition(
   // A second Position while one is live is the Rule's to judge, and only after
   // the refusals above: reopening the *same* Plan is not a Rule to argue with,
   // it is a tap that means nothing, and it must not be offered an Override.
-  const ruling = rule(state, command);
-  if (ruling.outcome !== 'clear') return ruling;
+  const ruled = applyRules(state, command);
+  if (ruled.outcome !== 'clear') return ruled;
 
   return {
     outcome: 'append',
@@ -223,7 +230,7 @@ function evaluateOpenPosition(
         type: 'PositionOpened',
         at: clock.now().toISOString(),
         planId: command.planId,
-        violations: ruling.violations,
+        violations: ruled.violations,
       },
     ],
   };

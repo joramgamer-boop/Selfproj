@@ -13,7 +13,7 @@ export interface Submission {
   readonly reason: string;
   readonly setReason: (reason: string) => void;
   /** Clears a refusal or a block once the trader edits what caused it. */
-  readonly clearProblem: () => void;
+  readonly clearOutcome: () => void;
   readonly onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }
 
@@ -72,7 +72,7 @@ export function useSubmission(
     // A block is a verdict on the figures that were sent. Change one and the
     // verdict is stale, so it goes rather than sitting there contradicting
     // what is now on screen.
-    clearProblem: () => {
+    clearOutcome: () => {
       setRejection(null);
       setBlock(null);
       setReason('');

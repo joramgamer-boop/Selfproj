@@ -28,15 +28,29 @@ export interface Rule {
   /** How the block names itself on screen. */
   readonly name: string;
   readonly timing: RuleTiming;
+  /**
+   * Whether typing a reason gets you past it. Almost always true, and that is
+   * the app's entire design: it has no power over the exchange, so a Rule that
+   * could never be broken would be bypassed by not opening the app at all.
+   *
+   * False only where breaking the Rule would leave nothing to record — there
+   * is then no event for the reason to be attached to, and offering the box
+   * would be a dead end rather than a way through. Exactly one Rule is like
+   * that, and the reason it is sits on the Rule itself.
+   */
+  readonly overridable: boolean;
   /** Why this command breaks the Rule, or null when it does not. */
   verdict(state: DerivedState, command: Command): string | null;
 }
 
-/** A Rule, and what it has to say about the command that was proposed. */
+/**
+ * What a Rule had to say about the command that was proposed. It names the
+ * Rule by id only, for the same reason a Violation does: the id is the Rule,
+ * and `ruleName` is the one place that turns one into words.
+ */
 export interface RuleVerdict {
   readonly ruleId: RuleId;
-  readonly rule: string;
-  readonly timing: RuleTiming;
+  readonly overridable: boolean;
   readonly explanation: string;
 }
 
@@ -53,13 +67,16 @@ export interface Violation {
 /**
  * A Plan with no Stop has no 1R, and a result that cannot be denominated in
  * 1R cannot be compared with any other result in the log. The Stop is also the
- * only input Notional is solved from, so this is the one block an Override
- * cannot get past: there is no sized Plan for the reason to be attached to.
+ * only input Notional is solved from — `Risk ÷ Stop distance` has no answer
+ * without one — so this is the Rule no Override can get past. It refuses
+ * rather than blocking, because a Plan that cannot be sized is not a Plan that
+ * was stopped: it is one that was never there to record.
  */
 const stopRequired: Rule = {
   id: 'stop-required',
   name: 'Every Plan needs a Stop',
   timing: 'pre-fact',
+  overridable: false,
   verdict: (_state, command) => {
     if (command.type !== 'CreatePlan' || isPrice(command.stopPrice)) return null;
     return (
@@ -79,6 +96,7 @@ const liquidationBuffer: Rule = {
   id: 'liquidation-buffer',
   name: 'The Stop stays inside the Liquidation Buffer',
   timing: 'pre-fact',
+  overridable: true,
   verdict: (_state, command) => {
     if (command.type !== 'CreatePlan') return null;
     // A missing Stop or liquidation price is somebody else's verdict to give.
@@ -105,6 +123,7 @@ const onePositionAtATime: Rule = {
   id: 'one-position-at-a-time',
   name: 'One Position at a time',
   timing: 'pre-fact',
+  overridable: true,
   verdict: (state, command) => {
     if (command.type !== 'OpenPosition' || state.openPositions.length === 0) return null;
     return (
@@ -129,8 +148,7 @@ export function ruleName(ruleId: RuleId): string {
 export function judge(state: DerivedState, command: Command): readonly RuleVerdict[] {
   return RULES.flatMap((rule) => {
     const explanation = rule.verdict(state, command);
-    if (explanation === null) return [];
-    return [{ ruleId: rule.id, rule: rule.name, timing: rule.timing, explanation }];
+    return explanation === null ? [] : [{ ruleId: rule.id, overridable: rule.overridable, explanation }];
   });
 }
 
