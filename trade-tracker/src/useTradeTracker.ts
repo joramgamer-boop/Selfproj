@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { Clock } from './core/clock';
-import type { Command } from './core/commands';
+import type { Command, CommandContext } from './core/commands';
 import { evaluate } from './core/commands';
 import type { TradeTrackerEvent } from './core/events';
 import type { DerivedState } from './core/state';
@@ -20,7 +19,7 @@ export interface TradeTracker {
  * The only place storage, the clock and the core meet. Components below this
  * point render derived state and dispatch commands — they decide nothing.
  */
-export function useTradeTracker(store: EventStore, clock: Clock): TradeTracker {
+export function useTradeTracker(store: EventStore, context: CommandContext): TradeTracker {
   const [log, setLog] = useState<readonly TradeTrackerEvent[]>([]);
   const [status, setStatus] = useState<'loading' | 'ready'>('loading');
   // The log as it stands this instant. A command that starts while another is
@@ -49,7 +48,7 @@ export function useTradeTracker(store: EventStore, clock: Clock): TradeTracker {
 
   const record = useCallback(
     async (command: Command): Promise<RecordResult> => {
-      const evaluation = evaluate(deriveState(stored.current), command, clock);
+      const evaluation = evaluate(deriveState(stored.current), command, context);
       if (evaluation.outcome === 'rejected') {
         return { ok: false, reason: evaluation.reason };
       }
@@ -65,7 +64,7 @@ export function useTradeTracker(store: EventStore, clock: Clock): TradeTracker {
       publish([...stored.current, ...evaluation.events]);
       return { ok: true };
     },
-    [clock, publish, store],
+    [context, publish, store],
   );
 
   return { status, state, record };

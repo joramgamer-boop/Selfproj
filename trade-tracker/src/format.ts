@@ -1,3 +1,5 @@
+import { riskPercentOf } from './core/risk';
+
 const money = new Intl.NumberFormat('en-US', {
   style: 'currency',
   currency: 'USD',
@@ -20,4 +22,9 @@ export function formatMoney(amount: number): string {
 
 export function formatWhen(isoTimestamp: string): string {
   return when.format(new Date(isoTimestamp));
+}
+
+/** Risk as the Plan screen says it: a percentage of Balance, to one decimal. */
+export function formatRiskPercent(fraction: number): string {
+  return `${riskPercentOf(fraction).toFixed(1)}%`;
 }

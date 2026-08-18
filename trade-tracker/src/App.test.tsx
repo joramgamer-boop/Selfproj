@@ -2,6 +2,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import App from './App';
 import { fixedClock } from './core/clock';
+import { sequentialIds } from './core/ids';
 import { createMemoryEventStore } from './storage/memoryEventStore';
 import type { EventStore } from './storage/eventStore';
 import type { DurableStorage } from './storage/durability';
@@ -13,7 +14,9 @@ const durable: DurableStorage = { request: async () => 'durable' };
 
 function renderApp(log: TradeTrackerEvent[] = []) {
   const store = createMemoryEventStore(log);
-  const view = render(<App store={store} clock={clock} durableStorage={durable} />);
+  const view = render(
+    <App store={store} clock={clock} ids={sequentialIds()} durableStorage={durable} />,
+  );
   return { log, view };
 }
 
@@ -66,7 +69,7 @@ describe('the account screen', () => {
     await screen.findByRole('listitem');
 
     view.unmount();
-    render(<App store={createMemoryEventStore(log)} clock={clock} durableStorage={durable} />);
+    render(<App store={createMemoryEventStore(log)} clock={clock} ids={sequentialIds()} durableStorage={durable} />);
 
     expect(await screen.findByLabelText(/^balance$/i)).toHaveTextContent('$30.00');
     expect(screen.getByRole('listitem')).toHaveTextContent('Deposit');
@@ -96,7 +99,7 @@ describe('the account screen', () => {
         await inner.append(events);
       },
     };
-    render(<App store={slowStore} clock={clock} durableStorage={durable} />);
+    render(<App store={slowStore} clock={clock} ids={sequentialIds()} durableStorage={durable} />);
 
     const user = userEvent.setup();
     await user.type(await screen.findByLabelText(/deposit amount/i), '30');
@@ -121,7 +124,14 @@ describe('the account screen', () => {
 
 describe('how durable the Ledger is', () => {
   function renderWith(durableStorage: DurableStorage) {
-    render(<App store={createMemoryEventStore()} clock={clock} durableStorage={durableStorage} />);
+    render(
+      <App
+        store={createMemoryEventStore()}
+        clock={clock}
+        ids={sequentialIds()}
+        durableStorage={durableStorage}
+      />,
+    );
     return screen.findByLabelText(/storage durability/i);
   }
 
@@ -163,11 +173,175 @@ describe('how durable the Ledger is', () => {
       <App
         store={createMemoryEventStore()}
         clock={clock}
+        ids={sequentialIds()}
         durableStorage={{ request: () => new Promise(() => {}) }}
       />,
     );
 
     await screen.findByLabelText(/^balance$/i);
     expect(screen.queryByLabelText(/storage durability/i)).not.toBeInTheDocument();
+  });
+});
+
+describe('sizing a Plan', () => {
+  const aLong = { entry: '100', stop: '96', leverage: '5', liquidation: '80' };
+
+  async function fillPlan(fields: Partial<typeof aLong> = {}) {
+    const user = userEvent.setup();
+    const values = { ...aLong, ...fields };
+    await user.type(await screen.findByLabelText(/entry price/i), values.entry);
+    await user.type(screen.getByLabelText(/^stop$/i), values.stop);
+    await user.type(screen.getByLabelText(/leverage/i), values.leverage);
+    await user.type(screen.getByLabelText(/liquidation price/i), values.liquidation);
+  }
+
+  async function createPlan() {
+    await userEvent.setup().click(screen.getByRole('button', { name: /create plan/i }));
+  }
+
+  it('solves the Notional from the Stop and shows the dollar Risk', async () => {
+    renderApp([deposit(500, '2026-01-01T09:00:00.000Z')]);
+
+    await fillPlan();
+
+    expect(await screen.findByLabelText(/^risk$/i)).toHaveTextContent('$10.00');
+    expect(screen.getByLabelText(/^notional$/i)).toHaveTextContent('$250.00');
+    expect(screen.getByLabelText(/^margin$/i)).toHaveTextContent('$50.00');
+  });
+
+  it('resizes the Notional when the Stop widens, holding the dollar Risk still', async () => {
+    renderApp([deposit(500, '2026-01-01T09:00:00.000Z')]);
+
+    await fillPlan({ stop: '92' });
+
+    expect(await screen.findByLabelText(/^risk$/i)).toHaveTextContent('$10.00');
+    expect(screen.getByLabelText(/^notional$/i)).toHaveTextContent('$125.00');
+  });
+
+  it('offers nothing to type a Notional into', async () => {
+    renderApp([deposit(500, '2026-01-01T09:00:00.000Z')]);
+    await screen.findByLabelText(/entry price/i);
+
+    const typeable = screen
+      .getAllByRole('spinbutton')
+      .concat(screen.queryAllByRole('textbox'))
+      .map((field) => field.getAttribute('aria-label') ?? field.id);
+
+    expect(typeable.join(' ')).not.toMatch(/notional|position size/i);
+  });
+
+  it('says that isolated margin is assumed', async () => {
+    renderApp([deposit(500, '2026-01-01T09:00:00.000Z')]);
+
+    expect(await screen.findByText(/isolated margin/i)).toBeInTheDocument();
+  });
+
+  it('shows no ROE figure anywhere', async () => {
+    renderApp([deposit(500, '2026-01-01T09:00:00.000Z')]);
+    await fillPlan();
+    await createPlan();
+
+    expect(document.body.textContent).not.toMatch(/\broe\b|return on margin/i);
+  });
+
+  it('records the Plan and shows it after a reload', async () => {
+    const { log, view } = renderApp([deposit(500, '2026-01-01T09:00:00.000Z')]);
+    await fillPlan();
+    await createPlan();
+    await screen.findByRole('listitem', { name: /plan/i });
+
+    view.unmount();
+    render(
+      <App
+        store={createMemoryEventStore(log)}
+        clock={clock}
+        ids={sequentialIds()}
+        durableStorage={durable}
+      />,
+    );
+
+    const plan = await screen.findByRole('listitem', { name: /plan/i });
+    expect(plan).toHaveTextContent(/long/i);
+    expect(plan).toHaveTextContent('$10.00');
+    expect(plan).toHaveTextContent('$250.00');
+  });
+
+  it('refuses a Plan it cannot size and records nothing', async () => {
+    const { log } = renderApp([deposit(500, '2026-01-01T09:00:00.000Z')]);
+
+    await fillPlan({ stop: '104' });
+    await createPlan();
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/stop on a long must sit below/i);
+    expect(log).toHaveLength(1);
+  });
+
+  it('will not size against an empty Ledger', async () => {
+    renderApp();
+
+    await fillPlan();
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/record a deposit first/i);
+  });
+});
+
+describe('the Risk default', () => {
+  it('offers the Plan the Risk that settings hold', async () => {
+    renderApp([deposit(500, '2026-01-01T09:00:00.000Z')]);
+
+    expect(await screen.findByLabelText(/^risk, % of balance$/i)).toHaveValue(2);
+  });
+
+  it('records a change to the default as a timestamped event', async () => {
+    const { log } = renderApp([deposit(500, '2026-01-01T09:00:00.000Z')]);
+    const user = userEvent.setup();
+
+    const field = await screen.findByLabelText(/default risk/i);
+    await user.clear(field);
+    await user.type(field, '3');
+    await user.click(screen.getByRole('button', { name: /save default/i }));
+
+    await waitFor(() =>
+      expect(log).toContainEqual({
+        type: 'RiskDefaultChanged',
+        at: '2026-05-04T12:30:00.000Z',
+        riskFraction: 0.03,
+      }),
+    );
+  });
+
+  it('flags a Plan that used more Risk than the default', async () => {
+    const { log } = renderApp([deposit(500, '2026-01-01T09:00:00.000Z')]);
+    const user = userEvent.setup();
+
+    const risk = await screen.findByLabelText(/^risk, % of balance$/i);
+    await user.clear(risk);
+    await user.type(risk, '3');
+    await user.type(screen.getByLabelText(/entry price/i), '100');
+    await user.type(screen.getByLabelText(/^stop$/i), '96');
+    await user.type(screen.getByLabelText(/leverage/i), '5');
+    await user.type(screen.getByLabelText(/liquidation price/i), '80');
+    await user.click(screen.getByRole('button', { name: /create plan/i }));
+
+    const plan = await screen.findByRole('listitem', { name: /plan/i });
+    expect(plan).toHaveTextContent(/above default risk/i);
+    expect(plan).toHaveTextContent('$15.00');
+    expect(log).toHaveLength(2);
+  });
+});
+
+describe('the Risk default, once changed', () => {
+  it('is what the next Plan starts at', async () => {
+    renderApp([deposit(500, '2026-01-01T09:00:00.000Z')]);
+    const user = userEvent.setup();
+
+    const setting = await screen.findByLabelText(/default risk/i);
+    await user.clear(setting);
+    await user.type(setting, '3');
+    await user.click(screen.getByRole('button', { name: /save default/i }));
+
+    await waitFor(() =>
+      expect(screen.getByLabelText(/^risk, % of balance$/i)).toHaveValue(3),
+    );
   });
 });

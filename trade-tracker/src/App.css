@@ -38,7 +38,7 @@
   background: var(--panel);
   border: 1px solid var(--edge);
   border-radius: 0.75rem;
-  padding: 1.25rem 1rem;
+  padding: 0.875rem 1rem;
   text-align: center;
 }
 
@@ -58,7 +58,7 @@
 
 .balance__amount {
   margin: 0.375rem 0;
-  font-size: 2.75rem;
+  font-size: 1.75rem;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   line-height: 1.1;
@@ -194,4 +194,272 @@
 .storage--evictable .storage__verdict,
 .storage--unknown .storage__verdict {
   color: var(--alarm);
+}
+
+.sizer {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.sizer__heading,
+.plans__heading {
+  margin: 0;
+  font-size: 0.75rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+
+.sizer__direction {
+  display: flex;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  border: none;
+}
+
+.sizer__legend {
+  /* The two buttons say what they are; the legend is for a screen reader. */
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+
+.sizer__toggle {
+  flex: 1 1 0;
+  min-height: 3rem;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--ink);
+  background: var(--panel);
+  border: 1px solid var(--edge);
+  border-radius: 0.5rem;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.sizer__toggle[aria-pressed='true'] {
+  color: var(--ground);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.sizer__fields {
+  display: grid;
+  /* Two per row on a phone: five fields fit above the fold, so sizing a trade
+     is one screen and no scrolling. */
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.625rem;
+}
+
+.field {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.field__label {
+  font-size: 0.6875rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+
+.field__input {
+  width: 100%;
+  min-width: 0;
+  /* 3rem clears the 44px tap target; 1.125rem clears the 16px below which iOS
+     zooms the page on focus. */
+  min-height: 3rem;
+  padding: 0.75rem;
+  font-size: 1.125rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  background: var(--panel);
+  border: 1px solid var(--edge);
+  border-radius: 0.5rem;
+}
+
+.sizing {
+  background: var(--panel);
+  border: 1px solid var(--edge);
+  border-radius: 0.75rem;
+  padding: 1rem;
+  text-align: center;
+}
+
+.sizing__label {
+  margin: 0;
+  font-size: 0.75rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+
+/* The largest type in the app, deliberately. This is the number that was
+   committed to, so it is the number that gets looked at — Notional and Margin
+   below it are what you type into the exchange, not what you are risking. */
+.sizing__risk {
+  margin: 0.25rem 0 0.75rem;
+  font-size: 3.5rem;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
+.sizing__derived {
+  margin: 0;
+  display: flex;
+  justify-content: center;
+  gap: 1.5rem;
+}
+
+.sizing__figure {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.sizing__figure dt {
+  font-size: 0.6875rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+
+.sizing__figure dd {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.sizing__assumption {
+  margin: 0.75rem 0 0;
+  font-size: 0.75rem;
+  color: var(--ink-dim);
+}
+
+.sizer__submit {
+  min-height: 3.25rem;
+  font-size: 1.0625rem;
+  font-weight: 600;
+  color: var(--ground);
+  background: var(--accent);
+  border: none;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.sizer__submit:disabled {
+  opacity: 0.6;
+}
+
+.sizer__rejection,
+.setting__rejection {
+  margin: 0;
+  color: var(--alarm);
+  font-size: 0.875rem;
+}
+
+.plans__empty {
+  margin: 0;
+  color: var(--ink-dim);
+}
+
+.plans__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.plan {
+  padding: 0.75rem 0;
+  border-top: 1px solid var(--edge);
+  font-variant-numeric: tabular-nums;
+}
+
+.plan__headline {
+  margin: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  font-weight: 600;
+}
+
+.plan__entry {
+  color: var(--ink-dim);
+  font-weight: 400;
+}
+
+.plan__oneR {
+  margin-left: auto;
+  font-size: 1.125rem;
+}
+
+.plan__detail {
+  margin: 0.25rem 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  font-size: 0.8125rem;
+  color: var(--ink-dim);
+}
+
+.plan__flag {
+  margin: 0.375rem 0 0;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--alarm);
+}
+
+.setting {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.setting__label {
+  font-size: 0.75rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+
+.setting__row {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.setting__input {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 3rem;
+  padding: 0.75rem;
+  font-size: 1.125rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  background: var(--panel);
+  border: 1px solid var(--edge);
+  border-radius: 0.5rem;
+}
+
+.setting__submit {
+  flex: 0 0 auto;
+  min-height: 3rem;
+  padding: 0.75rem 1rem;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--ink);
+  background: var(--panel);
+  border: 1px solid var(--edge);
+  border-radius: 0.5rem;
+  cursor: pointer;
+  touch-action: manipulation;
 }

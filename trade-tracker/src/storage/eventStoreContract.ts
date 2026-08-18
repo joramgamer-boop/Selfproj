@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { deposit } from '../test/events';
+import type { TradeTrackerEvent } from '../core/events';
+import { deposit, planCreated } from '../test/events';
 import type { EventStore } from './eventStore';
 
 /**
@@ -7,6 +8,15 @@ import type { EventStore } from './eventStore';
  * closing and reopening the app: the second handle must see what the first
  * appended.
  */
+/**
+ * The stored log read back as Deposit amounts. Anything that came back as a
+ * different kind of event surfaces whole, so the comparison fails loudly
+ * rather than quietly dropping it.
+ */
+function amounts(events: readonly TradeTrackerEvent[]): unknown[] {
+  return events.map((event) => (event.type === 'Deposit' ? event.amount : event));
+}
+
 export interface EventStoreFactory {
   open(): Promise<EventStore>;
 }
@@ -35,7 +45,7 @@ export function describeEventStoreContract(
         deposit(250, '2026-02-01T09:00:00.000Z'),
       ]);
 
-      expect((await store.read()).map((event) => event.amount)).toEqual([500, 250]);
+      expect(amounts(await store.read())).toEqual([500, 250]);
     });
 
     it('keeps appends in order across separate calls', async () => {
@@ -45,7 +55,7 @@ export function describeEventStoreContract(
       await store.append([deposit(250, '2026-02-01T09:00:00.000Z')]);
       await store.append([deposit(125, '2026-03-01T09:00:00.000Z')]);
 
-      expect((await store.read()).map((event) => event.amount)).toEqual([500, 250, 125]);
+      expect(amounts(await store.read())).toEqual([500, 250, 125]);
     });
 
     it('changes nothing when given an empty batch', async () => {
@@ -54,12 +64,32 @@ export function describeEventStoreContract(
 
       await store.append([]);
 
-      expect((await store.read()).map((event) => event.amount)).toEqual([500]);
+      expect(amounts(await store.read())).toEqual([500]);
     });
 
     it('round-trips a Deposit unchanged', async () => {
       const store = await createFactory().open();
       const recorded = deposit(1234.56, '2026-05-04T12:30:00.000Z');
+
+      await store.append([recorded]);
+
+      expect(await store.read()).toEqual([recorded]);
+    });
+
+    it('round-trips a Plan unchanged', async () => {
+      const store = await createFactory().open();
+      // A Plan carries far more fields than a Deposit, and every one of them
+      // feeds a figure solved from it — a field lost in storage is a wrong
+      // Notional rather than a crash.
+      const recorded = planCreated({
+        at: '2026-05-04T12:30:00.000Z',
+        direction: 'short',
+        entryPrice: 1234.56,
+        stopPrice: 1290.12,
+        liquidationPrice: 1480,
+        leverage: 7,
+        riskFraction: 0.025,
+      });
 
       await store.append([recorded]);
 
@@ -73,7 +103,7 @@ export function describeEventStoreContract(
 
       const reopened = await factory.open();
 
-      expect((await reopened.read()).map((event) => event.amount)).toEqual([500]);
+      expect(amounts(await reopened.read())).toEqual([500]);
     });
 
     it('keeps one body of data separate from another', async () => {
