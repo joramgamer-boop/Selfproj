@@ -47,6 +47,7 @@ export default function App({ store, clock, ids, durableStorage }: AppProps) {
           position={position}
           clock={clock}
           onClose={record}
+          onMoveStop={record}
         />
       ))}
       <PlanSizer balance={state.balance} riskDefault={state.riskDefault} onCreate={record} />

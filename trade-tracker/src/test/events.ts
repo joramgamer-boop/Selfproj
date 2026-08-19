@@ -2,6 +2,7 @@ import type {
   PlanAbandoned,
   PlanCreated,
   PositionClosed,
+  StopMoved,
   TradeTrackerEvent,
 } from '../core/events';
 import type { Violation } from '../core/rules';
@@ -74,4 +75,14 @@ export function planAbandoned(
   fields: Partial<Omit<PlanAbandoned, 'type'>> & { at: string },
 ): TradeTrackerEvent {
   return { type: 'PlanAbandoned', planId: 'plan-1', reason: 'price ran away', ...fields };
+}
+
+/**
+ * A Stop moved while the Position is live. Defaults to a tightening of the
+ * standard long — 96 up to 98 — since that is the move no Rule argues with.
+ */
+export function stopMoved(
+  fields: Partial<Omit<StopMoved, 'type'>> & { at: string },
+): TradeTrackerEvent {
+  return { type: 'StopMoved', planId: 'plan-1', stopPrice: 98, violations: [], ...fields };
 }

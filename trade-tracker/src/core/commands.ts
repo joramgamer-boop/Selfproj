@@ -1,7 +1,7 @@
 import { isInstant, type Clock } from './clock';
 import type { TradeTrackerEvent } from './events';
 import type { IdSource } from './ids';
-import { isRecordableAmount, toCents } from './money';
+import { isPrice, isRecordableAmount, toCents } from './money';
 import { isAbandonReason, type PlanInputs } from './plan';
 import { isPlannableRiskFraction, roundRiskFraction } from './risk';
 import { judge, type RuleVerdict, type Violation } from './rules';
@@ -52,6 +52,17 @@ export interface OpenPosition extends Overridable {
   readonly planId: string;
 }
 
+/**
+ * Moving the Stop on a live Position. Only the price: how far it moved and
+ * which way is the core's to work out, and what it does to 1R is nothing at
+ * all (ADR-0001).
+ */
+export interface MoveStop extends Overridable {
+  readonly type: 'MoveStop';
+  readonly planId: string;
+  readonly stopPrice: number;
+}
+
 /** What the trader types when a Position closes. */
 export interface ClosePosition extends ProposedClose {
   readonly type: 'ClosePosition';
@@ -71,6 +82,7 @@ export type Command =
   | CreatePlan
   | AbandonPlan
   | OpenPosition
+  | MoveStop
   | ClosePosition
   | SetRiskDefault;
 
@@ -114,6 +126,8 @@ export function evaluate(
       return evaluateAbandonPlan(state, command, context);
     case 'OpenPosition':
       return evaluateOpenPosition(state, command, context);
+    case 'MoveStop':
+      return evaluateMoveStop(state, command, context);
     case 'ClosePosition':
       return evaluateClosePosition(state, command, context);
     case 'SetRiskDefault':
@@ -298,6 +312,52 @@ function evaluateOpenPosition(
         type: 'PositionOpened',
         at: clock.now().toISOString(),
         planId: command.planId,
+        violations: ruled.violations,
+      },
+    ],
+  };
+}
+
+/**
+ * Moving the Stop. Whether the move widens the Stop is the Rule's to judge —
+ * everything decided here is whether there is a move to record at all.
+ *
+ * Nothing about the Plan is rewritten, and that is the whole shape of this
+ * command: it appends where the Stop stands from now on, and the Plan it was
+ * sized as — 1R above all — is left exactly as the log already holds it
+ * (ADR-0001).
+ */
+function evaluateMoveStop(
+  state: DerivedState,
+  command: MoveStop,
+  { clock }: CommandContext,
+): Evaluation {
+  const position = state.openPositions.find((open) => open.plan.id === command.planId);
+  if (!position) {
+    return { outcome: 'rejected', reason: 'There is no Position open on that Plan.' };
+  }
+
+  if (!isPrice(command.stopPrice)) {
+    return { outcome: 'rejected', reason: 'A Stop must be a price above zero.' };
+  }
+
+  // Not a Rule and not overridable: a Stop that did not move is a tap that
+  // recorded nothing, and no reason typed into it would produce an event.
+  if (command.stopPrice === position.stopPrice) {
+    return { outcome: 'rejected', reason: 'The Stop is already there.' };
+  }
+
+  const ruled = applyRules(state, command);
+  if (ruled.outcome !== 'clear') return ruled;
+
+  return {
+    outcome: 'append',
+    events: [
+      {
+        type: 'StopMoved',
+        at: clock.now().toISOString(),
+        planId: command.planId,
+        stopPrice: command.stopPrice,
         violations: ruled.violations,
       },
     ],

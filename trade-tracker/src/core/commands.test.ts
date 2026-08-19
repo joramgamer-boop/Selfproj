@@ -1,10 +1,17 @@
-import type { ClosePosition, CreatePlan } from './commands';
+import type { ClosePosition, CreatePlan, MoveStop } from './commands';
 import { evaluate } from './commands';
 import { ABANDON_REASONS } from './plan';
 import { deriveState, emptyState } from './state';
 import { fixedClock } from './clock';
 import { sequentialIds } from './ids';
-import { deposit, planAbandoned, planCreated, positionClosed, positionOpened } from '../test/events';
+import {
+  deposit,
+  planAbandoned,
+  planCreated,
+  positionClosed,
+  positionOpened,
+  stopMoved,
+} from '../test/events';
 
 const clock = fixedClock('2026-05-04T12:30:00.000Z');
 const context = () => ({ clock, ids: sequentialIds() });
@@ -509,5 +516,79 @@ describe('abandoning a Plan', () => {
       outcome: 'rejected',
       reason: expect.stringMatching(/abandoned/i),
     });
+  });
+});
+
+describe('moving the Stop on an open Position', () => {
+  const moveTo = (stopPrice: number): MoveStop => ({
+    type: 'MoveStop',
+    planId: 'plan-1',
+    stopPrice,
+  });
+
+  it('produces a StopMoved stamped from the clock', () => {
+    expect(evaluate(live, moveTo(98), context())).toEqual({
+      outcome: 'append',
+      events: [
+        {
+          type: 'StopMoved',
+          at: '2026-05-04T12:30:00.000Z',
+          planId: 'plan-1',
+          stopPrice: 98,
+          violations: [],
+        },
+      ],
+    });
+  });
+
+  it('stands the Stop at its new price once the event is folded back in', () => {
+    const evaluation = evaluate(live, moveTo(98), context());
+
+    if (evaluation.outcome !== 'append') throw new Error('expected the Stop to be movable');
+    const state = deriveState([funded, planned, positionOpened(openedAt), ...evaluation.events]);
+    expect(state.openPositions[0].stopPrice).toBe(98);
+  });
+
+  it('leaves 1R at the Stop the Plan was sized to', () => {
+    const evaluation = evaluate(live, moveTo(98), context());
+
+    if (evaluation.outcome !== 'append') throw new Error('expected the Stop to be movable');
+    const state = deriveState([funded, planned, positionOpened(openedAt), ...evaluation.events]);
+    expect(state.openPositions[0].plan).toMatchObject({ oneR: 10, stopPrice: 96 });
+  });
+
+  it('is rejected when no Position is open on that Plan', () => {
+    expect(evaluate(sized, moveTo(98), context())).toEqual({
+      outcome: 'rejected',
+      reason: 'There is no Position open on that Plan.',
+    });
+    expect(evaluate(settled, moveTo(98), context())).toMatchObject({ outcome: 'rejected' });
+  });
+
+  it('is rejected when the Stop is not a price above zero', () => {
+    expect(evaluate(live, moveTo(0), context())).toMatchObject({
+      outcome: 'rejected',
+      reason: expect.stringMatching(/above zero/i),
+    });
+    expect(evaluate(live, moveTo(Number.NaN), context())).toMatchObject({ outcome: 'rejected' });
+  });
+
+  it('is rejected when the Stop is already there, since nothing moved', () => {
+    expect(evaluate(live, moveTo(96), context())).toMatchObject({
+      outcome: 'rejected',
+      reason: expect.stringMatching(/already/i),
+    });
+  });
+
+  it('takes a second tightening from where the first left the Stop', () => {
+    const tightened = deriveState([
+      funded,
+      planned,
+      positionOpened(openedAt),
+      stopMoved({ at: '2026-01-03T11:00:00.000Z', stopPrice: 98 }),
+    ]);
+
+    expect(evaluate(tightened, moveTo(99), context())).toMatchObject({ outcome: 'append' });
+    expect(evaluate(tightened, moveTo(98), context())).toMatchObject({ outcome: 'rejected' });
   });
 });

@@ -11,3 +11,12 @@ export function toCents(amount: number): number {
 export function isRecordableAmount(amount: number): boolean {
   return Number.isFinite(amount) && amount > 0;
 }
+
+/**
+ * Whether a figure names a price at all. One definition, because every module
+ * that reads one asks the same question of it — and a blank number field
+ * arrives as zero, which is not a price but the absence of one.
+ */
+export function isPrice(value: number): boolean {
+  return Number.isFinite(value) && value > 0;
+}

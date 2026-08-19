@@ -1,5 +1,5 @@
-import { toCents } from './money';
-import type { Plan } from './state';
+import { isPrice, toCents } from './money';
+import type { Plan, Trade } from './state';
 import { isExitReason, type ClosingRecord, type ProposedClose } from './trade';
 
 export interface Settlement {
@@ -35,6 +35,24 @@ export function solveSettlement(plan: Plan, closing: ClosingRecord): Settlement 
   const fees = toCents(closing.fees);
 
   return { grossPnl, fees, realizedPnl: toCents(grossPnl - fees) };
+}
+
+/**
+ * What the Trade came to, in units of the Risk it was taken with: realized
+ * P&L net of fees over the Plan's 1R. The unit every result in the log is
+ * compared in.
+ *
+ * The denominator is the Plan's — fixed at the Stop it was sized to, whatever
+ * the Stop did afterwards (ADR-0001). A Trade that trailed its Stop to
+ * breakeven and stopped out there reads as the 0R it was, rather than as a
+ * division by a risk that had stopped existing.
+ */
+export function rMultipleOf(trade: Trade): number {
+  // Unrounded, unlike every money figure here. Expectancy is an average of
+  // these, and averaging figures already rounded for a screen would bake the
+  // display's precision into the one statistic that decides whether the
+  // account grows. Rounding belongs where it is rendered.
+  return trade.realizedPnl / trade.plan.oneR;
 }
 
 /**
@@ -95,8 +113,4 @@ function wrongSideBestPrice(plan: Plan, proposed: ProposedClose): string | null 
     return 'Best Price is the lowest the price reached — on a short it cannot sit above the entry or the exit.';
   }
   return null;
-}
-
-function isPrice(value: number): boolean {
-  return Number.isFinite(value) && value > 0;
 }

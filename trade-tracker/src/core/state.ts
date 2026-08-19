@@ -2,6 +2,7 @@ import type {
   PlanAbandoned,
   PositionClosed,
   PositionOpened,
+  StopMoved,
   TradeTrackerEvent,
 } from './events';
 import { toCents } from './money';
@@ -63,10 +64,25 @@ export interface Plan extends PlanInputs {
   readonly violations: readonly Violation[];
 }
 
+/** One time the Stop was moved while the Position was live. */
+export interface StopMove {
+  readonly at: string;
+  readonly stopPrice: number;
+}
+
 /** A Plan that is live on the exchange. It ends by closing into a Trade. */
 export interface Position {
   readonly plan: Plan;
   readonly openedAt: string;
+  /**
+   * Where the Stop stands now — the Plan's own until it was moved. It sits
+   * here rather than on the Plan because the Plan's Stop is what the Position
+   * was sized at, and 1R is fixed to it (ADR-0001). Two fields, so that
+   * tightening a Stop can never be mistaken for resizing the risk.
+   */
+  readonly stopPrice: number;
+  /** Every move, in the order they happened. Empty until the Stop moved. */
+  readonly stopMoves: readonly StopMove[];
 }
 
 /**
@@ -214,7 +230,32 @@ export function deriveState(events: readonly TradeTrackerEvent[]): DerivedState 
         const record = planOf(records, event);
         record.status = 'open';
         record.violations.push(...event.violations);
-        open.set(event.planId, { plan: asPlan(record), openedAt: event.at });
+        open.set(event.planId, {
+          plan: asPlan(record),
+          openedAt: event.at,
+          // Where the Plan put it. A Position that never moves its Stop reads
+          // the same as the Plan it was sized as, which is the point.
+          stopPrice: record.figures.stopPrice,
+          stopMoves: [],
+        });
+        break;
+      }
+      case 'StopMoved': {
+        const record = planOf(records, event);
+        const position = open.get(event.planId);
+        if (!position) {
+          throw new Error(`Stored Stop move on ${event.planId} has no Position open to move it on.`);
+        }
+        record.violations.push(...event.violations);
+
+        // Everything about the Plan is left where it was: only where the Stop
+        // stands changes, and the moves accumulate beside it.
+        open.set(event.planId, {
+          ...position,
+          plan: asPlan(record),
+          stopPrice: event.stopPrice,
+          stopMoves: [...position.stopMoves, { at: event.at, stopPrice: event.stopPrice }],
+        });
         break;
       }
       case 'PositionClosed': {
@@ -289,7 +330,7 @@ export function deriveState(events: readonly TradeTrackerEvent[]): DerivedState 
 
 function planOf(
   records: Map<string, PlanRecord>,
-  event: PlanAbandoned | PositionOpened | PositionClosed,
+  event: PlanAbandoned | PositionOpened | StopMoved | PositionClosed,
 ): PlanRecord {
   const record = records.get(event.planId);
   if (!record) {

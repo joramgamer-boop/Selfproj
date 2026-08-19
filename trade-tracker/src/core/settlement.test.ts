@@ -1,8 +1,15 @@
-import { solveSettlement } from './settlement';
+import { rMultipleOf, solveSettlement } from './settlement';
 import type { ClosingRecord } from './trade';
 import { deriveState } from './state';
-import type { Plan } from './state';
-import { deposit, planCreated } from '../test/events';
+import type { Plan, Trade } from './state';
+import type { TradeTrackerEvent } from './events';
+import {
+  deposit,
+  planCreated,
+  positionClosed,
+  positionOpened,
+  stopMoved,
+} from '../test/events';
 
 /**
  * The Plan the sizing tests worked through: $500 Balance, 2% Risk, a 4% Stop.
@@ -95,5 +102,52 @@ describe('what a closed Position realized', () => {
       fees: 0.01,
       realizedPnl: 8.32,
     });
+  });
+});
+
+describe('what a Trade came to in R', () => {
+  const funded = deposit(500, '2026-01-01T09:00:00.000Z');
+  const planned = planCreated({ at: '2026-01-02T09:00:00.000Z' });
+  const openedAt = '2026-01-03T09:00:00.000Z';
+  const closedAt = '2026-01-03T15:00:00.000Z';
+
+  /** The Trade the log holds after this sequence of events. */
+  function tradeAfter(...moves: TradeTrackerEvent[]): Trade {
+    return deriveState([
+      funded,
+      planned,
+      positionOpened(openedAt),
+      ...moves,
+      positionClosed({ at: closedAt, openedAt, exitPrice: 104, fees: 0 }),
+    ]).trades[0];
+  }
+
+  it('is the realized P&L in units of the Plan’s 1R', () => {
+    // $10 of Risk bought 2.5 units, so a $4 move is $10 — one whole R.
+    expect(rMultipleOf(tradeAfter())).toBe(1);
+  });
+
+  it('counts a loser as the negative multiple it was', () => {
+    const trade = deriveState([
+      funded,
+      planned,
+      positionOpened(openedAt),
+      positionClosed({ at: closedAt, openedAt, exitPrice: 96, bestPrice: 101, fees: 0 }),
+    ]).trades[0];
+
+    expect(rMultipleOf(trade)).toBe(-1);
+  });
+
+  it('measures a Trade closed after a tightened Stop against the 1R committed at entry', () => {
+    // The Stop was trailed to breakeven and beyond. Recomputing 1R from where
+    // it ended up would divide by a risk that no longer existed and report an
+    // edge that isn't there (ADR-0001).
+    const trailed = tradeAfter(
+      stopMoved({ at: '2026-01-03T11:00:00.000Z', stopPrice: 100 }),
+      stopMoved({ at: '2026-01-03T12:00:00.000Z', stopPrice: 103 }),
+    );
+
+    expect(trailed.plan.oneR).toBe(10);
+    expect(rMultipleOf(trailed)).toBe(1);
   });
 });

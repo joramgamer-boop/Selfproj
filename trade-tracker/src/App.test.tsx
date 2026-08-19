@@ -599,3 +599,97 @@ describe('abandoning a Plan', () => {
     ).toEqual(['No valid Stop', 'Risk too large to size', 'Price ran away', 'Changed my mind']);
   });
 });
+
+describe('moving the Stop on a live Position', () => {
+  const live = () => [
+    deposit(500, '2026-01-01T09:00:00.000Z'),
+    planCreated({ at: '2026-01-02T09:00:00.000Z' }),
+    positionOpened('2026-01-03T09:00:00.000Z'),
+  ];
+
+  async function moveStopTo(price: string) {
+    const user = userEvent.setup();
+    await user.type(await screen.findByLabelText(/move the stop to/i), price);
+    await user.click(screen.getByRole('button', { name: /^move the stop$/i }));
+  }
+
+  it('tightens the Stop in one action and shows where it now stands', async () => {
+    const { log } = renderApp(live());
+
+    await moveStopTo('98');
+
+    const position = await screen.findByLabelText(/open position/i);
+    // The Stop shown is the one that will fire, and the one the Plan was
+    // sized at is named as such beside it — the Trade is measured against
+    // that one however far this Stop is trailed.
+    expect(position).toHaveTextContent(/stop 98/i);
+    expect(position).toHaveTextContent(/original stop 96/i);
+    await waitFor(() =>
+      expect(log).toContainEqual({
+        type: 'StopMoved',
+        at: '2026-05-04T12:30:00.000Z',
+        planId: 'plan-1',
+        stopPrice: 98,
+        violations: [],
+      }),
+    );
+  });
+
+  it('leaves 1R where the Plan sized it, however far the Stop is trailed', async () => {
+    renderApp(live());
+
+    await moveStopTo('98');
+    await screen.findByText(/original stop 96/i);
+    await moveStopTo('101');
+
+    const position = await screen.findByLabelText(/open position/i);
+    expect(position).toHaveTextContent(/stop 101/i);
+    // The Risk committed at entry, still the denominator (ADR-0001).
+    expect(position).toHaveTextContent('$10.00');
+  });
+
+  it('blocks a widening, then records the Override as a Violation', async () => {
+    const { log } = renderApp(live());
+    const user = userEvent.setup();
+
+    await moveStopTo('94');
+
+    const block = await screen.findByLabelText(/blocked by a rule/i);
+    expect(block).toHaveTextContent(/a stop tightens, never widens/i);
+    expect(await screen.findByLabelText(/open position/i)).toHaveTextContent(/stop 96/i);
+    expect(log).toHaveLength(3);
+
+    await user.type(
+      screen.getByLabelText(/why are you doing it anyway/i),
+      'Wick took me out; the level below is the real one.',
+    );
+    await user.click(screen.getByRole('button', { name: /move the stop anyway/i }));
+
+    const position = await screen.findByLabelText(/open position/i);
+    expect(position).toHaveTextContent(/stop 94/i);
+    expect(position).toHaveTextContent(/violation — a stop tightens, never widens/i);
+    await waitFor(() =>
+      expect(log).toContainEqual(
+        expect.objectContaining({
+          type: 'StopMoved',
+          stopPrice: 94,
+          violations: [
+            {
+              ruleId: 'stop-never-widens',
+              reason: 'Wick took me out; the level below is the real one.',
+            },
+          ],
+        }),
+      ),
+    );
+  });
+
+  it('says so when the Stop is asked to move where it already is', async () => {
+    const { log } = renderApp(live());
+
+    await moveStopTo('96');
+
+    expect(await screen.findByText(/the stop is already there/i)).toBeInTheDocument();
+    expect(log).toHaveLength(3);
+  });
+});

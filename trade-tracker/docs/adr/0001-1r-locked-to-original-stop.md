@@ -21,6 +21,10 @@ exact failure this project exists to detect.
 - Reversing this invalidates every R-multiple ever recorded. Treat it as
   permanent.
 - Widening a Stop genuinely increases risk beyond what was committed, so it is a
-  blocked Rule with a Violation flag rather than a recalculation.
+  blocked Rule with a Violation flag rather than a recalculation. The Rule judges
+  the move against where the Stop stands at the time, not only against the
+  original: giving back risk already taken off the table is the same reflex, and
+  a Stop that may be walked back as far as the original in stages is not a Stop
+  that only tightens.
 - A Trade closed at a moved Stop may show an R-multiple that looks inconsistent
   with its exit price. That is correct and intended.

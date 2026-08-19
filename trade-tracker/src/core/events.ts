@@ -67,6 +67,25 @@ export interface PositionOpened {
 }
 
 /**
+ * The Stop moved while the Position was live. Timestamped and kept, because
+ * where the Stop stands is the only thing about a live trade that changes.
+ *
+ * Nothing here touches 1R. The Plan's own Stop is what it was sized at, this
+ * event holds where the Stop stands now, and the two are separate fields for
+ * that reason alone (ADR-0001) — recomputing 1R from a trailed Stop would
+ * inflate every R-multiple after it and report an edge that isn't there.
+ */
+export interface StopMoved {
+  readonly type: 'StopMoved';
+  readonly at: string;
+  readonly planId: string;
+  /** Where the Stop stands from here. Not a distance, and not a new 1R. */
+  readonly stopPrice: number;
+  /** One if the move widened the Stop and the trader went through anyway. */
+  readonly violations: readonly Violation[];
+}
+
+/**
  * A Position closed and settled — the event that produces a Trade and moves
  * the Balance. It holds what the trader typed and nothing solved: P&L, the
  * R-multiple and Capture Rate are all folded back out of it against the Plan.
@@ -91,6 +110,7 @@ export type TradeTrackerEvent =
   | PlanCreated
   | PlanAbandoned
   | PositionOpened
+  | StopMoved
   | PositionClosed
   | RiskDefaultChanged;
 

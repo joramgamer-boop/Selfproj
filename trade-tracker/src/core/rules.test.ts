@@ -1,9 +1,9 @@
-import { evaluate, type CreatePlan, type OpenPosition } from './commands';
+import { evaluate, type CreatePlan, type MoveStop, type OpenPosition } from './commands';
 import { fixedClock } from './clock';
 import { sequentialIds } from './ids';
 import { RULES } from './rules';
 import { deriveState } from './state';
-import { deposit, planCreated, positionClosed, positionOpened } from '../test/events';
+import { deposit, planCreated, positionClosed, positionOpened, stopMoved } from '../test/events';
 
 const clock = fixedClock('2026-05-04T12:30:00.000Z');
 const context = () => ({ clock, ids: sequentialIds() });
@@ -250,5 +250,103 @@ describe('a Violation on the record', () => {
     expect(settled.trades[0].plan.violations).toEqual([
       { ruleId: 'one-position-at-a-time', reason },
     ]);
+  });
+});
+
+describe('the Rule that a Stop tightens and never widens', () => {
+  const planned = planCreated({ at: '2026-01-02T09:00:00.000Z' });
+  const openedAt = '2026-01-03T09:00:00.000Z';
+  const live = deriveState([funded, planned, positionOpened(openedAt)]);
+  const move = (stopPrice: number): MoveStop => ({
+    type: 'MoveStop',
+    planId: 'plan-1',
+    stopPrice,
+  });
+
+  it('lets a Stop tighten toward entry without a block', () => {
+    // The long entered at 100 with its Stop at 96. Moving it to 98 halves what
+    // is still at risk, which is trade management rather than a rule break.
+    expect(evaluate(live, move(98), context())).toMatchObject({ outcome: 'append' });
+  });
+
+  it('lets a Stop past the entry through, since that only cuts the risk further', () => {
+    // A long's Stop above its entry is locked-in profit, not widening.
+    expect(evaluate(live, move(101), context())).toMatchObject({ outcome: 'append' });
+  });
+
+  it('blocks a Stop moved away from entry, and offers a way through', () => {
+    expect(evaluate(live, move(94), context())).toMatchObject({
+      outcome: 'blocked',
+      verdicts: [{ ruleId: 'stop-never-widens', overridable: true }],
+    });
+  });
+
+  it('measures the same widening on a short', () => {
+    const short = deriveState([
+      funded,
+      planCreated({
+        at: '2026-01-02T09:00:00.000Z',
+        direction: 'short',
+        stopPrice: 104,
+        liquidationPrice: 120,
+      }),
+      positionOpened(openedAt),
+    ]);
+
+    expect(evaluate(short, move(102), context())).toMatchObject({ outcome: 'append' });
+    expect(evaluate(short, move(106), context())).toMatchObject({
+      outcome: 'blocked',
+      verdicts: [{ ruleId: 'stop-never-widens' }],
+    });
+  });
+
+  it('judges the move against where the Stop now stands, not where it started', () => {
+    const tightened = deriveState([
+      funded,
+      planned,
+      positionOpened(openedAt),
+      stopMoved({ at: '2026-01-03T11:00:00.000Z', stopPrice: 99 }),
+    ]);
+
+    // 97 is still tighter than the 96 this Plan was sized at, and it is still
+    // giving back risk that had already been taken off the table.
+    expect(evaluate(tightened, move(97), context())).toMatchObject({
+      outcome: 'blocked',
+      verdicts: [{ ruleId: 'stop-never-widens' }],
+    });
+  });
+
+  it('says what the widening would cost, so the block is arguable', () => {
+    expect(evaluate(live, move(94), context())).toMatchObject({
+      verdicts: [{ explanation: expect.stringMatching(/1R/i) }],
+    });
+  });
+
+  it('records the widening as a Violation when a reason is typed', () => {
+    const reason = 'Wick took me out; the level below is the real invalidation.';
+    const evaluation = evaluate(live, { ...move(94), override: { reason } }, context());
+
+    expect(evaluation).toMatchObject({
+      outcome: 'append',
+      events: [{ type: 'StopMoved', violations: [{ ruleId: 'stop-never-widens', reason }] }],
+    });
+  });
+
+  it('leaves the Violation on the Plan once the log is folded back', () => {
+    const reason = 'Wick took me out; the level below is the real invalidation.';
+    const log = [funded, planned, positionOpened(openedAt)];
+    const evaluation = evaluate(deriveState(log), { ...move(94), override: { reason } }, context());
+
+    if (evaluation.outcome !== 'append') throw new Error('expected the Override to be recorded');
+    expect(deriveState([...log, ...evaluation.events]).plans[0].violations).toEqual([
+      { ruleId: 'stop-never-widens', reason },
+    ]);
+  });
+
+  it('says nothing about a Plan that is not live, since there is no Stop to move', () => {
+    expect(evaluate(deriveState([funded, planned]), move(94), context())).toMatchObject({
+      outcome: 'rejected',
+      reason: expect.stringMatching(/no Position open/i),
+    });
   });
 });

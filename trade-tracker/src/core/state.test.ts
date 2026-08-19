@@ -6,6 +6,7 @@ import {
   positionClosed,
   positionOpened,
   riskDefaultChanged,
+  stopMoved,
 } from '../test/events';
 
 describe('Balance', () => {
@@ -199,6 +200,9 @@ describe('taking a Plan live as a Position', () => {
       {
         plan: { ...state.plans[0], status: 'open' },
         openedAt,
+        // The Stop stands where the Plan put it until it is moved.
+        stopPrice: 96,
+        stopMoves: [],
       },
     ]);
     expect(state.openPositions[0].plan).toMatchObject({ oneR: 10, notional: 250 });
@@ -490,6 +494,101 @@ describe('abandoning a Plan', () => {
 
   it('refuses to fold a skip of a Plan that is not on the record', () => {
     expect(() => deriveState([funded, planAbandoned({ at: abandonedAt, planId: 'plan-9' })])).toThrow(
+      /plan-9/,
+    );
+  });
+});
+
+describe('moving the Stop on an open Position', () => {
+  const funded = deposit(500, '2026-01-01T09:00:00.000Z');
+  const planned = planCreated({ at: '2026-01-02T09:00:00.000Z' });
+  const openedAt = '2026-01-03T09:00:00.000Z';
+  const movedAt = '2026-01-03T11:00:00.000Z';
+  const live = [funded, planned, positionOpened(openedAt)];
+
+  it('stands the Stop where it was moved to, with the Plan’s original beside it', () => {
+    const state = deriveState([...live, stopMoved({ at: movedAt, stopPrice: 98 })]);
+
+    expect(state.openPositions[0]).toMatchObject({
+      stopPrice: 98,
+      plan: { stopPrice: 96 },
+    });
+  });
+
+  it('stands the Stop at the Plan’s own until one has been moved', () => {
+    expect(deriveState(live).openPositions[0]).toMatchObject({ stopPrice: 96, stopMoves: [] });
+  });
+
+  it('keeps every move, in the order they happened', () => {
+    const state = deriveState([
+      ...live,
+      stopMoved({ at: movedAt, stopPrice: 98 }),
+      stopMoved({ at: '2026-01-03T13:00:00.000Z', stopPrice: 100 }),
+    ]);
+
+    expect(state.openPositions[0].stopMoves).toEqual([
+      { at: movedAt, stopPrice: 98 },
+      { at: '2026-01-03T13:00:00.000Z', stopPrice: 100 },
+    ]);
+    expect(state.openPositions[0].stopPrice).toBe(100);
+  });
+
+  it('leaves 1R at the original Stop however many times the Stop moves (ADR-0001)', () => {
+    const state = deriveState([
+      ...live,
+      stopMoved({ at: movedAt, stopPrice: 98 }),
+      stopMoved({ at: '2026-01-03T13:00:00.000Z', stopPrice: 99.5 }),
+      stopMoved({ at: '2026-01-03T14:00:00.000Z', stopPrice: 101 }),
+    ]);
+
+    expect(state.openPositions[0].plan).toMatchObject({ oneR: 10, stopPrice: 96, notional: 250 });
+  });
+
+  it('moves no Balance, because a Stop is not a fill', () => {
+    const state = deriveState([...live, stopMoved({ at: movedAt, stopPrice: 98 })]);
+
+    expect(state.balance).toBe(500);
+    expect(state.ledger).toHaveLength(1);
+  });
+
+  it('carries a Violation from an overridden widening onto the Plan', () => {
+    const violation = { ruleId: 'stop-never-widens' as const, reason: 'Real level is lower.' };
+    const state = deriveState([
+      ...live,
+      stopMoved({ at: movedAt, stopPrice: 94, violations: [violation] }),
+    ]);
+
+    expect(state.plans[0].violations).toEqual([violation]);
+    expect(state.openPositions[0].plan.violations).toEqual([violation]);
+  });
+
+  it('carries that Violation on through to the Trade the Position closed as', () => {
+    const violation = { ruleId: 'stop-never-widens' as const, reason: 'Real level is lower.' };
+    const state = deriveState([
+      ...live,
+      stopMoved({ at: movedAt, stopPrice: 94, violations: [violation] }),
+      positionClosed({ at: '2026-01-03T15:00:00.000Z', openedAt }),
+    ]);
+
+    expect(state.trades[0].plan.violations).toEqual([violation]);
+  });
+
+  it('leaves nothing open once the Position it moved the Stop on has closed', () => {
+    const state = deriveState([
+      ...live,
+      stopMoved({ at: movedAt, stopPrice: 98 }),
+      positionClosed({ at: '2026-01-03T15:00:00.000Z', openedAt }),
+    ]);
+
+    expect(state.openPositions).toEqual([]);
+  });
+
+  it('refuses to fold a Stop move against a Position that was never open', () => {
+    expect(() => deriveState([funded, planned, stopMoved({ at: movedAt })])).toThrow(/plan-1/);
+  });
+
+  it('refuses to fold a Stop move against a Plan that is not on the record', () => {
+    expect(() => deriveState([funded, stopMoved({ at: movedAt, planId: 'plan-9' })])).toThrow(
       /plan-9/,
     );
   });

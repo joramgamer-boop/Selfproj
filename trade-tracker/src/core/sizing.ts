@@ -1,4 +1,4 @@
-import { toCents } from './money';
+import { isPrice, toCents } from './money';
 import type { PlanInputs } from './plan';
 import { isPlannableRiskFraction } from './risk';
 
@@ -98,8 +98,4 @@ function wrongSideLiquidation(inputs: PlanInputs): string | null {
     return 'The liquidation price on a short must sit above the entry price.';
   }
   return null;
-}
-
-function isPrice(value: number): boolean {
-  return Number.isFinite(value) && value > 0;
 }
