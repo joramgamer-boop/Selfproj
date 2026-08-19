@@ -1,4 +1,4 @@
-import type { Direction } from './core/plan';
+import type { AbandonReason, Direction } from './core/plan';
 import { riskPercentOf } from './core/risk';
 
 const money = new Intl.NumberFormat('en-US', {
@@ -30,6 +30,21 @@ const directions: Record<Direction, string> = { long: 'Long', short: 'Short' };
 /** Which way round the trade is, as every screen says it. */
 export function formatDirection(direction: Direction): string {
   return directions[direction];
+}
+
+const abandonReasons: Record<AbandonReason, string> = {
+  'no valid stop': 'No valid Stop',
+  'risk too large to size': 'Risk too large to size',
+  'price ran away': 'Price ran away',
+  'changed my mind': 'Changed my mind',
+};
+
+/**
+ * Why a Plan was skipped, as every screen says it. One spelling, so the button
+ * that records a skip and the row that reports it cannot drift apart.
+ */
+export function formatAbandonReason(reason: AbandonReason): string {
+  return abandonReasons[reason];
 }
 
 /** Risk as the Plan screen says it: a percentage of Balance, to one decimal. */

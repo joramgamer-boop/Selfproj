@@ -1,4 +1,4 @@
-import type { PlanInputs } from './plan';
+import type { AbandonReason, PlanInputs } from './plan';
 import type { Violation } from './rules';
 import type { ClosingRecord } from './trade';
 
@@ -34,6 +34,19 @@ export interface PlanCreated extends PlanInputs {
    * nothing appended later can separate the two.
    */
   readonly violations: readonly Violation[];
+}
+
+/**
+ * A Plan sized and then not taken. It moves no money, so it never reaches the
+ * Ledger — but it stays in the log for good, because a skip is evidence about
+ * the edge and an absent row is evidence about nothing.
+ */
+export interface PlanAbandoned {
+  readonly type: 'PlanAbandoned';
+  readonly at: string;
+  readonly planId: string;
+  /** One of the four. Checked against the list before this event is written. */
+  readonly reason: AbandonReason;
 }
 
 /** A settings change, kept in the log so the default has a history. */
@@ -76,6 +89,7 @@ export interface PositionClosed extends ClosingRecord {
 export type TradeTrackerEvent =
   | Deposit
   | PlanCreated
+  | PlanAbandoned
   | PositionOpened
   | PositionClosed
   | RiskDefaultChanged;

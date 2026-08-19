@@ -1,9 +1,10 @@
 import type { ClosePosition, CreatePlan } from './commands';
 import { evaluate } from './commands';
+import { ABANDON_REASONS } from './plan';
 import { deriveState, emptyState } from './state';
 import { fixedClock } from './clock';
 import { sequentialIds } from './ids';
-import { deposit, planCreated, positionClosed, positionOpened } from '../test/events';
+import { deposit, planAbandoned, planCreated, positionClosed, positionOpened } from '../test/events';
 
 const clock = fixedClock('2026-05-04T12:30:00.000Z');
 const context = () => ({ clock, ids: sequentialIds() });
@@ -417,5 +418,96 @@ describe('closing a Position', () => {
     expect(
       evaluate(live, { ...aClose, notes: '  Exited on a wick.  ' }, context()),
     ).toMatchObject({ events: [{ notes: 'Exited on a wick.' }] });
+  });
+});
+
+describe('abandoning a Plan', () => {
+  const skip = { type: 'AbandonPlan', planId: 'plan-1', reason: 'price ran away' } as const;
+
+  it('produces a PlanAbandoned stamped from the clock, holding the reason', () => {
+    expect(evaluate(sized, skip, context())).toEqual({
+      outcome: 'append',
+      events: [
+        {
+          type: 'PlanAbandoned',
+          at: '2026-05-04T12:30:00.000Z',
+          planId: 'plan-1',
+          reason: 'price ran away',
+        },
+      ],
+    });
+  });
+
+  it('marks the Plan abandoned once the event is folded back in', () => {
+    const evaluation = evaluate(sized, skip, context());
+
+    if (evaluation.outcome !== 'append') throw new Error('expected the Plan to be abandonable');
+    const state = deriveState([funded, planned, ...evaluation.events]);
+    expect(state.plans[0]).toMatchObject({ status: 'abandoned', abandonReason: 'price ran away' });
+    expect(state.balance).toBe(500);
+    expect(state.trades).toEqual([]);
+  });
+
+  it('takes each of the four reasons the framework allows', () => {
+    for (const reason of ABANDON_REASONS) {
+      expect(evaluate(sized, { ...skip, reason }, context())).toMatchObject({
+        outcome: 'append',
+        events: [{ reason }],
+      });
+    }
+  });
+
+  it('is rejected when the reason is not one of the four', () => {
+    expect(evaluate(sized, { ...skip, reason: 'felt wrong' }, context())).toMatchObject({
+      outcome: 'rejected',
+      reason: expect.stringMatching(/reason/i),
+    });
+  });
+
+  it('is rejected when no reason was given at all', () => {
+    expect(evaluate(sized, { ...skip, reason: '' }, context())).toMatchObject({
+      outcome: 'rejected',
+    });
+  });
+
+  it('is rejected when the Plan is not on the record', () => {
+    expect(evaluate(sized, { ...skip, planId: 'plan-9' }, context())).toEqual({
+      outcome: 'rejected',
+      reason: 'That Plan is not on the record.',
+    });
+  });
+
+  it('is rejected when the Plan is already live as a Position', () => {
+    // A Position is closed, not skipped: the money is on the exchange, and a
+    // skip that could swallow it would take a real Trade out of the log.
+    expect(evaluate(live, skip, context())).toMatchObject({
+      outcome: 'rejected',
+      reason: expect.stringMatching(/already live/i),
+    });
+  });
+
+  it('is rejected when the Plan has already closed as a Trade', () => {
+    expect(evaluate(settled, skip, context())).toMatchObject({
+      outcome: 'rejected',
+      reason: expect.stringMatching(/already closed/i),
+    });
+  });
+
+  it('is rejected when the Plan was already abandoned', () => {
+    const skipped = deriveState([funded, planned, planAbandoned({ at: '2026-01-02T10:00:00.000Z' })]);
+
+    expect(evaluate(skipped, skip, context())).toMatchObject({
+      outcome: 'rejected',
+      reason: expect.stringMatching(/was abandoned/i),
+    });
+  });
+
+  it('cannot be taken live once it has been abandoned', () => {
+    const skipped = deriveState([funded, planned, planAbandoned({ at: '2026-01-02T10:00:00.000Z' })]);
+
+    expect(evaluate(skipped, { type: 'OpenPosition', planId: 'plan-1' }, context())).toMatchObject({
+      outcome: 'rejected',
+      reason: expect.stringMatching(/abandoned/i),
+    });
   });
 });

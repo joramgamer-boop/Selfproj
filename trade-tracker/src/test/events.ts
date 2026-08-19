@@ -1,4 +1,9 @@
-import type { PlanCreated, PositionClosed, TradeTrackerEvent } from '../core/events';
+import type {
+  PlanAbandoned,
+  PlanCreated,
+  PositionClosed,
+  TradeTrackerEvent,
+} from '../core/events';
 import type { Violation } from '../core/rules';
 
 /** Shared across all three seams so a stored event looks the same everywhere. */
@@ -62,4 +67,11 @@ export function positionClosed(
 
 export function riskDefaultChanged(riskFraction: number, at: string): TradeTrackerEvent {
   return { type: 'RiskDefaultChanged', at, riskFraction };
+}
+
+/** A Plan skipped rather than taken. Defaults to the reason the log exists for. */
+export function planAbandoned(
+  fields: Partial<Omit<PlanAbandoned, 'type'>> & { at: string },
+): TradeTrackerEvent {
+  return { type: 'PlanAbandoned', planId: 'plan-1', reason: 'price ran away', ...fields };
 }

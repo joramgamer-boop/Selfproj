@@ -2,7 +2,7 @@ import { isInstant, type Clock } from './clock';
 import type { TradeTrackerEvent } from './events';
 import type { IdSource } from './ids';
 import { isRecordableAmount, toCents } from './money';
-import type { PlanInputs } from './plan';
+import { isAbandonReason, type PlanInputs } from './plan';
 import { isPlannableRiskFraction, roundRiskFraction } from './risk';
 import { judge, type RuleVerdict, type Violation } from './rules';
 import { closeOut } from './settlement';
@@ -35,6 +35,17 @@ export interface CreatePlan extends PlanInputs, Overridable {
   readonly type: 'CreatePlan';
 }
 
+/**
+ * Skipping a Plan that was sized. The reason arrives as the screen offered
+ * it; deciding whether it is one of the four is the core's job, exactly as it
+ * is for an Exit Reason.
+ */
+export interface AbandonPlan {
+  readonly type: 'AbandonPlan';
+  readonly planId: string;
+  readonly reason: string;
+}
+
 /** Taking a Plan live. Nothing to type: the Plan already holds the figures. */
 export interface OpenPosition extends Overridable {
   readonly type: 'OpenPosition';
@@ -58,6 +69,7 @@ export interface SetRiskDefault {
 export type Command =
   | RecordDeposit
   | CreatePlan
+  | AbandonPlan
   | OpenPosition
   | ClosePosition
   | SetRiskDefault;
@@ -98,6 +110,8 @@ export function evaluate(
       return evaluateRecordDeposit(command, context);
     case 'CreatePlan':
       return evaluateCreatePlan(state, command, context);
+    case 'AbandonPlan':
+      return evaluateAbandonPlan(state, command, context);
     case 'OpenPosition':
       return evaluateOpenPosition(state, command, context);
     case 'ClosePosition':
@@ -203,19 +217,73 @@ function evaluateCreatePlan(
   };
 }
 
+/**
+ * Why this Plan can no longer be acted on, or null while it still can be.
+ * Taking a Plan live and skipping it want the same thing of it — a Plan on the
+ * record that is still only a Plan — and neither answer is a Rule to argue
+ * with: a Plan that has already ended has nothing left for either command to
+ * record, so no reason typed into it would produce an event.
+ */
+function alreadyEnded(state: DerivedState, planId: string): Evaluation | null {
+  const plan = state.plans.find((candidate) => candidate.id === planId);
+  if (!plan) return { outcome: 'rejected', reason: 'That Plan is not on the record.' };
+
+  switch (plan.status) {
+    case 'planned':
+      return null;
+    case 'open':
+      // A live Position is closed, never skipped: money is on the exchange,
+      // and a skip that could swallow it would take a real Trade out of the
+      // log.
+      return { outcome: 'rejected', reason: 'That Plan is already live as a Position.' };
+    case 'closed':
+      return { outcome: 'rejected', reason: 'That Plan has already closed as a Trade.' };
+    case 'abandoned':
+      return { outcome: 'rejected', reason: 'That Plan was abandoned. Size it again if it is back on.' };
+  }
+}
+
+/**
+ * Recording a skip. No Rule judges this one and none could: there is nothing
+ * to block, and refusing to record a trade that was *not* taken would leave
+ * the log claiming the setup never happened. The only thing to decide is
+ * whether the Plan is still a Plan and the reason is one of the four.
+ */
+function evaluateAbandonPlan(
+  state: DerivedState,
+  command: AbandonPlan,
+  { clock }: CommandContext,
+): Evaluation {
+  const ended = alreadyEnded(state, command.planId);
+  if (ended) return ended;
+
+  // Free text would make the skips uncountable, and "price ran away" only
+  // becomes evidence of entry lag once every instance of it says the same
+  // words.
+  if (!isAbandonReason(command.reason)) {
+    return { outcome: 'rejected', reason: 'Pick one of the four reasons — a skip is data, not a note.' };
+  }
+
+  return {
+    outcome: 'append',
+    events: [
+      {
+        type: 'PlanAbandoned',
+        at: clock.now().toISOString(),
+        planId: command.planId,
+        reason: command.reason,
+      },
+    ],
+  };
+}
+
 function evaluateOpenPosition(
   state: DerivedState,
   command: OpenPosition,
   { clock }: CommandContext,
 ): Evaluation {
-  const plan = state.plans.find((candidate) => candidate.id === command.planId);
-  if (!plan) return { outcome: 'rejected', reason: 'That Plan is not on the record.' };
-  if (plan.status === 'open') {
-    return { outcome: 'rejected', reason: 'That Plan is already live as a Position.' };
-  }
-  if (plan.status === 'closed') {
-    return { outcome: 'rejected', reason: 'That Plan has already closed as a Trade.' };
-  }
+  const ended = alreadyEnded(state, command.planId);
+  if (ended) return ended;
 
   // A second Position while one is live is the Rule's to judge, and only after
   // the refusals above: reopening the *same* Plan is not a Rule to argue with,

@@ -18,3 +18,22 @@ export interface PlanInputs {
   /** Share of Balance risked, e.g. 0.02. Not a dollar amount: Balance moves. */
   readonly riskFraction: number;
 }
+
+/**
+ * Why a Plan was sized and then not taken. A fixed list rather than free text
+ * for the same reason the Exit Reasons are one: a skip is data about the edge,
+ * and prose cannot be counted. "Price ran away" above all — it is entry lag,
+ * and it only reads as a leak once it has accumulated somewhere visible.
+ */
+export const ABANDON_REASONS = [
+  'no valid stop',
+  'risk too large to size',
+  'price ran away',
+  'changed my mind',
+] as const;
+
+export type AbandonReason = (typeof ABANDON_REASONS)[number];
+
+export function isAbandonReason(value: string): value is AbandonReason {
+  return (ABANDON_REASONS as readonly string[]).includes(value);
+}

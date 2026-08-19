@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import App from './App';
 import { fixedClock } from './core/clock';
@@ -553,5 +553,49 @@ describe('hitting a Rule and going through it anyway', () => {
         }),
       ),
     );
+  });
+});
+
+describe('abandoning a Plan', () => {
+  // Freshly built per test: the store appends to the array it is handed.
+  const sized = () => [
+    deposit(500, '2026-01-01T09:00:00.000Z'),
+    planCreated({ at: '2026-01-02T09:00:00.000Z' }),
+  ];
+
+  async function pickReason(reason: RegExp) {
+    await userEvent.setup().click(await screen.findByRole('button', { name: reason }));
+  }
+
+  it('records the skip against the Plan in one tap, and says what it was for', async () => {
+    const { log } = renderApp(sized());
+
+    await pickReason(/price ran away/i);
+
+    await waitFor(() =>
+      expect(log).toContainEqual({
+        type: 'PlanAbandoned',
+        at: '2026-05-04T12:30:00.000Z',
+        planId: 'plan-1',
+        reason: 'price ran away',
+      }),
+    );
+    const plan = screen.getByRole('listitem', { name: /plan/i });
+    expect(plan).toHaveTextContent(/abandoned/i);
+    expect(plan).toHaveTextContent(/price ran away/i);
+    // Still on the log, and no longer something that can be traded.
+    expect(screen.queryByRole('button', { name: /open as position/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('group', { name: /not taking it/i })).not.toBeInTheDocument();
+  });
+
+  it('offers the four reasons the framework allows and nothing else', async () => {
+    renderApp(sized());
+    const reasons = await screen.findByRole('group', { name: /why you are not taking it/i });
+
+    expect(
+      within(reasons)
+        .getAllByRole('button')
+        .map((button) => button.textContent),
+    ).toEqual(['No valid Stop', 'Risk too large to size', 'Price ran away', 'Changed my mind']);
   });
 });

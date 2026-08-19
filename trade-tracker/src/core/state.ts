@@ -1,6 +1,11 @@
-import type { PositionClosed, PositionOpened, TradeTrackerEvent } from './events';
+import type {
+  PlanAbandoned,
+  PositionClosed,
+  PositionOpened,
+  TradeTrackerEvent,
+} from './events';
 import { toCents } from './money';
-import type { PlanInputs } from './plan';
+import type { AbandonReason, PlanInputs } from './plan';
 import { DEFAULT_RISK_FRACTION } from './risk';
 import type { Violation } from './rules';
 import { solveSettlement } from './settlement';
@@ -21,8 +26,8 @@ export interface LedgerEntry {
   readonly balanceAfter: number;
 }
 
-/** Where a Plan has got to. A Plan that was sized and skipped joins this later. */
-export type PlanStatus = 'planned' | 'open' | 'closed';
+/** Where a Plan has got to. Every Plan ends at one of the last two. */
+export type PlanStatus = 'planned' | 'open' | 'closed' | 'abandoned';
 
 /**
  * A Plan as the log has it: what was typed, plus everything solved from the
@@ -43,6 +48,12 @@ export interface Plan extends PlanInputs {
   /** Set when the Plan used more Risk than the default in force at the time. */
   readonly aboveDefaultRisk: boolean;
   readonly status: PlanStatus;
+  /**
+   * Why the Plan was skipped, or null while it was not. Set only alongside
+   * the abandoned status, so a row that says it was skipped always says what
+   * for — the accumulating "price ran away" is the whole point of the field.
+   */
+  readonly abandonReason: AbandonReason | null;
   /**
    * Every Rule overridden anywhere in this Plan's life — sizing it, taking it
    * live — in the order the overrides happened. Unlike the figures above this
@@ -103,8 +114,9 @@ export const emptyState: DerivedState = {
 
 /** A Plan being folded, before it is known how the Plan turned out. */
 interface PlanRecord {
-  readonly figures: Omit<Plan, 'status' | 'violations'>;
+  readonly figures: Omit<Plan, 'status' | 'violations' | 'abandonReason'>;
   status: PlanStatus;
+  abandonReason: AbandonReason | null;
   /** Appended to as the log goes on, so a snapshot taken at the close holds
    *  the Violations from every step, not only from sizing. */
   readonly violations: Violation[];
@@ -129,6 +141,7 @@ export function deriveState(events: readonly TradeTrackerEvent[]): DerivedState 
   const asPlan = (record: PlanRecord): Plan => ({
     ...record.figures,
     status: record.status,
+    abandonReason: record.abandonReason,
     violations: [...record.violations],
   });
 
@@ -155,6 +168,7 @@ export function deriveState(events: readonly TradeTrackerEvent[]): DerivedState 
         }
         records.set(event.id, {
           status: 'planned',
+          abandonReason: null,
           // Recorded, never re-judged: whether these Rules would still block
           // this Plan today is beside the point — they blocked it then, and
           // the trader said why.
@@ -175,6 +189,25 @@ export function deriveState(events: readonly TradeTrackerEvent[]): DerivedState 
             aboveDefaultRisk: event.riskFraction > riskDefault,
           },
         });
+        break;
+      }
+      case 'PlanAbandoned': {
+        const record = planOf(records, event);
+        // Only a Plan can be skipped. A skip against one already live or
+        // already closed is not an ambiguity to report, it is a log that
+        // contradicts itself — and folding it would leave a Position running
+        // under a row that says it was never taken.
+        if (record.status !== 'planned') {
+          throw new Error(
+            `Stored abandonment of ${event.planId} refers to a Plan that was already ${record.status}.`,
+          );
+        }
+        record.status = 'abandoned';
+        record.abandonReason = event.reason;
+        // No Ledger entry and no Trade, deliberately: a Plan that was never
+        // taken moved no money, and letting it near either would put a
+        // non-event into the Balance and into every statistic folded from
+        // the Trades.
         break;
       }
       case 'PositionOpened': {
@@ -256,7 +289,7 @@ export function deriveState(events: readonly TradeTrackerEvent[]): DerivedState 
 
 function planOf(
   records: Map<string, PlanRecord>,
-  event: PositionOpened | PositionClosed,
+  event: PlanAbandoned | PositionOpened | PositionClosed,
 ): PlanRecord {
   const record = records.get(event.planId);
   if (!record) {

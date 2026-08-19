@@ -50,7 +50,7 @@ export default function App({ store, clock, ids, durableStorage }: AppProps) {
         />
       ))}
       <PlanSizer balance={state.balance} riskDefault={state.riskDefault} onCreate={record} />
-      <PlanList plans={state.plans} onOpen={record} />
+      <PlanList plans={state.plans} onOpen={record} onAbandon={record} />
       <DepositForm onRecord={(amount) => record({ type: 'RecordDeposit', amount })} />
       <LedgerList entries={state.ledger} />
       <RiskDefaultSetting

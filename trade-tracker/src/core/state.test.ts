@@ -1,6 +1,7 @@
 import { deriveState } from './state';
 import {
   deposit,
+  planAbandoned,
   planCreated,
   positionClosed,
   positionOpened,
@@ -97,6 +98,7 @@ describe('a Plan on the record', () => {
         oneR: 10,
         aboveDefaultRisk: false,
         status: 'planned',
+        abandonReason: null,
         violations: [],
       },
     ]);
@@ -393,6 +395,102 @@ describe('closing a Position into a Trade', () => {
   it('refuses to fold a close against a Position that was never open', () => {
     expect(() => deriveState([funded, planned, positionClosed({ at: closedAt })])).toThrow(
       /plan-1/,
+    );
+  });
+});
+
+describe('abandoning a Plan', () => {
+  const funded = deposit(500, '2026-01-01T09:00:00.000Z');
+  const planned = planCreated({ at: '2026-01-02T09:00:00.000Z' });
+  const abandonedAt = '2026-01-02T09:05:00.000Z';
+  const skipped = [funded, planned, planAbandoned({ at: abandonedAt, reason: 'price ran away' })];
+
+  it('marks the Plan abandoned, for the reason it was skipped for', () => {
+    expect(deriveState(skipped).plans[0]).toMatchObject({
+      status: 'abandoned',
+      abandonReason: 'price ran away',
+    });
+  });
+
+  it('leaves a Plan nobody skipped without a reason', () => {
+    expect(deriveState([funded, planned]).plans[0].abandonReason).toBeNull();
+  });
+
+  it('keeps the Abandoned Plan on the record, figures and all', () => {
+    const state = deriveState(skipped);
+
+    expect(state.plans).toHaveLength(1);
+    expect(state.plans[0]).toMatchObject({ oneR: 10, notional: 250, balanceAtCreation: 500 });
+  });
+
+  it('opens no Position and produces no Trade', () => {
+    const state = deriveState(skipped);
+
+    expect(state.openPositions).toEqual([]);
+    expect(state.trades).toEqual([]);
+  });
+
+  it('moves no Balance and writes nothing to the Ledger', () => {
+    const state = deriveState(skipped);
+
+    // The skip is the whole point: what was not traded cannot have cost or
+    // made anything, so it must not reach the Ledger the Balance folds from.
+    expect(state.balance).toBe(500);
+    expect(state.ledger).toHaveLength(1);
+  });
+
+  it('sizes the next Plan off a Balance the skip left untouched', () => {
+    const state = deriveState([
+      ...skipped,
+      planCreated({ at: '2026-01-03T09:00:00.000Z', id: 'plan-2' }),
+    ]);
+
+    expect(state.plans[1]).toMatchObject({ balanceAtCreation: 500, oneR: 10 });
+  });
+
+  it('counts toward nothing a Trade counts toward', () => {
+    const state = deriveState([
+      ...skipped,
+      planCreated({ at: '2026-01-03T09:00:00.000Z', id: 'plan-2' }),
+      positionOpened('2026-01-03T10:00:00.000Z', 'plan-2'),
+      positionClosed({ at: '2026-01-03T15:00:00.000Z', planId: 'plan-2', openedAt: '2026-01-03T10:00:00.000Z' }),
+    ]);
+
+    // Two Plans on the record and one Trade among them — the closed-Trade
+    // count that gates statistics, and every figure folded from it, sees the
+    // Trade alone (ADR-0002).
+    expect(state.plans).toHaveLength(2);
+    expect(state.trades).toHaveLength(1);
+  });
+
+  it('refuses to fold a skip of a Plan that is live as a Position', () => {
+    // The Position would go on running underneath a row saying it was never
+    // taken, and the Trade it closes as would be a Trade on an Abandoned Plan.
+    expect(() =>
+      deriveState([
+        funded,
+        planned,
+        positionOpened('2026-01-03T09:00:00.000Z'),
+        planAbandoned({ at: '2026-01-03T10:00:00.000Z' }),
+      ]),
+    ).toThrow(/already open/);
+  });
+
+  it('refuses to fold a skip of a Plan that has already closed as a Trade', () => {
+    expect(() =>
+      deriveState([
+        funded,
+        planned,
+        positionOpened('2026-01-03T09:00:00.000Z'),
+        positionClosed({ at: '2026-01-03T15:00:00.000Z', openedAt: '2026-01-03T09:00:00.000Z' }),
+        planAbandoned({ at: '2026-01-03T16:00:00.000Z' }),
+      ]),
+    ).toThrow(/already closed/);
+  });
+
+  it('refuses to fold a skip of a Plan that is not on the record', () => {
+    expect(() => deriveState([funded, planAbandoned({ at: abandonedAt, planId: 'plan-9' })])).toThrow(
+      /plan-9/,
     );
   });
 });

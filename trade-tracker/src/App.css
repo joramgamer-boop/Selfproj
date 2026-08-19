@@ -625,6 +625,52 @@
   opacity: 0.6;
 }
 
+/* A skipped Plan. Dimmed rather than hidden: it stays in the log for good, but
+   it is not a result and must not read like one beside a Trade. */
+.plan--abandoned {
+  opacity: 0.68;
+}
+
+/* Skipping, one tap away and quieter than taking the trade. The app has no
+   opinion on which is right — it only insists that either one is written down. */
+.abandon {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  margin-top: 0.5rem;
+}
+
+.abandon__label {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--ink-dim);
+}
+
+/* Every reason on the row, because the tap that gives the reason has to be
+   the tap that records the skip. A picker and a confirm would take the reason
+   after the decision, and the decision is the thing being logged. */
+.abandon__reasons {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: 0.375rem;
+}
+
+.abandon__reason {
+  min-height: 2.75rem;
+  padding: 0 0.5rem;
+  font-size: 0.875rem;
+  color: var(--ink);
+  background: var(--panel);
+  border: 1px solid var(--edge);
+  border-radius: 0.5rem;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.abandon__reason:disabled {
+  opacity: 0.6;
+}
+
 /* A block. Bordered in the alarm colour and sitting immediately above the
    button it qualifies, so the Rule and the cost of ignoring it are read in
    the same glance as the tap that ignores it. */
