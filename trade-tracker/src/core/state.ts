@@ -1,3 +1,4 @@
+import { baseAfterWithdrawal, drawdownOf, isPastTripwire } from './account';
 import type {
   PlanAbandoned,
   PositionClosed,
@@ -8,13 +9,13 @@ import type {
 import { toCents } from './money';
 import type { AbandonReason, PlanInputs } from './plan';
 import { DEFAULT_RISK_FRACTION } from './risk';
-import type { Violation } from './rules';
+import type { RuleId, Violation } from './rules';
 import { solveSettlement } from './settlement';
 import { solveSizing } from './sizing';
 import type { ClosingRecord } from './trade';
 
 /** What moved the Balance, in the Ledger's own words rather than the log's. */
-export type LedgerKind = 'Deposit' | 'Trade';
+export type LedgerKind = 'Deposit' | 'Withdrawal' | 'Trade';
 
 /** One movement of the Balance, in the order it was recorded. */
 export interface LedgerEntry {
@@ -22,9 +23,16 @@ export interface LedgerEntry {
   readonly seq: number;
   readonly kind: LedgerKind;
   readonly at: string;
-  /** Signed: credits are positive. */
+  /** Signed: credits are positive, so a Withdrawal reads negative. */
   readonly amount: number;
   readonly balanceAfter: number;
+  /**
+   * The Rules this row broke on its way in, warned about rather than blocked.
+   * Empty on everything but a Withdrawal, which is the only entry the Ledger
+   * has anything to say about — the rest either could not break a Rule or were
+   * stopped before they became a row.
+   */
+  readonly warnings: readonly RuleId[];
 }
 
 /** Where a Plan has got to. Every Plan ends at one of the last two. */
@@ -105,6 +113,23 @@ export interface Trade extends ClosingRecord {
 export interface DerivedState {
   /** Derived from the Ledger, never stored and never typed. */
   readonly balance: number;
+  /**
+   * The deposited capital still in the account. Raised by every Deposit and
+   * lowered only by a Withdrawal that dug into it — never by a losing Trade,
+   * which loses money that was still put in (see `baseAfterWithdrawal`).
+   */
+  readonly base: number;
+  /** The highest Balance the Ledger ever reached. Not Best Price: that is one
+   *  Position's high-water mark, this is the account's. */
+  readonly peakBalance: number;
+  /** The fall from Peak Balance, as a share of it. Zero at a new peak. */
+  readonly drawdown: number;
+  /**
+   * True while the Drawdown is past the tripwire and the log review has not
+   * been acknowledged since it last fired. What the Rule that blocks new Plans
+   * reads, and what puts the banner on screen.
+   */
+  readonly drawdownReviewDue: boolean;
   readonly ledger: readonly LedgerEntry[];
   readonly plans: readonly Plan[];
   /**
@@ -121,6 +146,10 @@ export interface DerivedState {
 
 export const emptyState: DerivedState = {
   balance: 0,
+  base: 0,
+  peakBalance: 0,
+  drawdown: 0,
+  drawdownReviewDue: false,
   ledger: [],
   plans: [],
   openPositions: [],
@@ -150,7 +179,22 @@ export function deriveState(events: readonly TradeTrackerEvent[]): DerivedState 
   const open = new Map<string, Position>();
   const trades: Trade[] = [];
   let balance = 0;
+  let base = 0;
+  let peakBalance = 0;
+  // Whether the tripwire has been answered since it last fired. Reset below
+  // rather than cleared by hand, so re-arming is a property of the fold.
+  let reviewed = false;
   let riskDefault = DEFAULT_RISK_FRACTION;
+
+  /**
+   * Everything that follows the Balance moving. The peak only ever rises, and
+   * a Drawdown back inside the tripwire re-arms it: the next fall past the
+   * threshold is a new fall, and wants a new look at the log.
+   */
+  const balanceMoved = () => {
+    peakBalance = Math.max(peakBalance, balance);
+    if (!isPastTripwire(drawdownOf(balance, peakBalance))) reviewed = false;
+  };
 
   // Copied rather than shared: a Position or Trade holds the Plan as it stood
   // when it was taken, and a Violation recorded later must not appear on it.
@@ -165,13 +209,40 @@ export function deriveState(events: readonly TradeTrackerEvent[]): DerivedState 
     switch (event.type) {
       case 'Deposit':
         balance = toCents(balance + event.amount);
+        base = toCents(base + event.amount);
+        balanceMoved();
         ledger.push({
           seq,
           kind: 'Deposit',
           at: event.at,
           amount: event.amount,
           balanceAfter: balance,
+          warnings: [],
         });
+        break;
+      case 'Withdrawal':
+        balance = toCents(balance - event.amount);
+        // By exactly what the Withdrawal dug out of it and no more: taking
+        // profit leaves the base where it was, and taking more than profit
+        // leaves the base short by the part that was not profit.
+        base = baseAfterWithdrawal(base, event.amount, balance);
+        balanceMoved();
+        ledger.push({
+          seq,
+          kind: 'Withdrawal',
+          at: event.at,
+          // Negative, so the Ledger's amounts sum to the Balance folded above
+          // them and a row never has to be read twice to know which way it went.
+          amount: toCents(-event.amount),
+          balanceAfter: balance,
+          // Recorded, never re-judged — exactly as a Violation is. Whether this
+          // Withdrawal would warn against today's Balance is beside the point:
+          // it warned then, and the row is what the trader saw.
+          warnings: event.warnings,
+        });
+        break;
+      case 'DrawdownReviewAcknowledged':
+        reviewed = true;
         break;
       case 'PlanCreated': {
         // Deliberately the arithmetic alone. Whether this Plan was *allowed*
@@ -271,6 +342,11 @@ export function deriveState(events: readonly TradeTrackerEvent[]): DerivedState 
         // Plan above is not re-adjudicated: this Trade already happened.
         const settlement = solveSettlement(position.plan, event);
         balance = toCents(balance + settlement.realizedPnl);
+        // The base is deliberately left alone. Money lost trading is still
+        // money that was put in, and forgiving the base on the way down would
+        // let a recovery back to it read as profit — so the Withdrawal that
+        // followed would take the base out with nothing said about it.
+        balanceMoved();
         trades.push({
           plan: asPlan(record),
           openedAt: event.openedAt,
@@ -293,6 +369,7 @@ export function deriveState(events: readonly TradeTrackerEvent[]): DerivedState 
         ledger.push({
           seq,
           kind: 'Trade',
+          warnings: [],
           // When the money moved, not when it was written down. The running
           // Balance still follows the order of the log, because that is the
           // order it was folded in — so a Trade logged late reads as a row
@@ -318,8 +395,14 @@ export function deriveState(events: readonly TradeTrackerEvent[]): DerivedState 
     }
   });
 
+  const drawdown = drawdownOf(balance, peakBalance);
+
   return {
     balance,
+    base,
+    peakBalance,
+    drawdown,
+    drawdownReviewDue: isPastTripwire(drawdown) && !reviewed,
     ledger,
     plans: [...records.values()].map(asPlan),
     openPositions: [...open.values()],

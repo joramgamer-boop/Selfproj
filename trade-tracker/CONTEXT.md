@@ -143,6 +143,24 @@ down.
 
 Always *derived* from the Ledger, never stored or typed. Sizing reads it.
 
+### Withdrawal
+
+Money taken back out. By rule rather than by mood: only once the account has
+doubled, and only out of profit — never the Base. Both are warnings and neither
+can block, because a Withdrawal is written down *after* it happened.
+
+Not "drawdown" — that word is the fall from Peak Balance below.
+
+### Base
+
+The deposited capital still in the account: raised by every Deposit, lowered
+only by a Withdrawal that dug into it. A losing Trade does not lower it, because
+money lost trading is still money that was put in.
+
+The thing that compounds. Not "capital", not "principal", and never the Balance
+— the Balance includes profit, and taking profit is the only withdrawal the
+Rules stay quiet about.
+
 ### Peak Balance
 
 The highest Balance ever reached. Distinct from Best Price, which is about a
@@ -151,7 +169,16 @@ single Position.
 ### Drawdown
 
 The fall from Peak Balance to current Balance, as a percentage. At 20% the
-tripwire fires.
+Tripwire fires. It is measured against the peak, not against the Base — an
+account still up on what was deposited can be well into a Drawdown.
+
+### Tripwire
+
+The Rule that pauses new Plans at a 20% Drawdown until a log review is
+acknowledged. It re-arms: once the Drawdown recovers inside 20%, the next fall
+past it asks again.
+
+The acknowledgement is a recorded event, never a dismissal.
 
 ## Discipline
 
@@ -160,6 +187,12 @@ tripwire fires.
 One of the constraints the app enforces. Rules that act *before* the fact block a
 Plan; rules that act *after* the fact can only warn, because the Ledger must
 record what already happened.
+
+### Warning
+
+What an after-the-fact Rule produces: prominent on the screen, then kept as a
+flag on the Ledger row for good. Distinct from a Violation — nothing was
+overridden and nothing was typed, because there was never a block to get past.
 
 ### Violation
 

@@ -1,5 +1,5 @@
 import type { AbandonReason, PlanInputs } from './plan';
-import type { Violation } from './rules';
+import type { RuleId, Violation } from './rules';
 import type { ClosingRecord } from './trade';
 
 /**
@@ -14,6 +14,38 @@ export interface Deposit {
   readonly at: string;
   /** Positive, in account currency. */
   readonly amount: number;
+}
+
+/**
+ * Money taken back out of the account. The one event that is written down
+ * after the fact rather than before it, and so the one no Rule may refuse:
+ * every Position size after this point is solved from the Balance folded from
+ * the Ledger, and a Withdrawal left unrecorded silently oversizes all of them.
+ */
+export interface Withdrawal {
+  readonly type: 'Withdrawal';
+  readonly at: string;
+  /** Positive, in account currency. Which way it moves the Balance is the type. */
+  readonly amount: number;
+  /**
+   * The post-fact Rules this Withdrawal broke, by id, as they stood when it
+   * was recorded — the flag on the row. Not Violations: nothing was overridden
+   * and nothing was typed, because there was never a block to get past. Like a
+   * Violation they are stored rather than re-judged, so a warning cannot be
+   * argued away later by depositing until the Ledger reads better.
+   */
+  readonly warnings: readonly RuleId[];
+}
+
+/**
+ * The trader confirming they have reviewed the log after the Drawdown
+ * tripwire fired. An event rather than a flag, because the acknowledgement is
+ * itself data: how often the tripwire fires, and how quickly it gets waved
+ * through, is the record of whether the pause was really taken.
+ */
+export interface DrawdownReviewAcknowledged {
+  readonly type: 'DrawdownReviewAcknowledged';
+  readonly at: string;
 }
 
 /**
@@ -107,6 +139,8 @@ export interface PositionClosed extends ClosingRecord {
 
 export type TradeTrackerEvent =
   | Deposit
+  | Withdrawal
+  | DrawdownReviewAcknowledged
   | PlanCreated
   | PlanAbandoned
   | PositionOpened

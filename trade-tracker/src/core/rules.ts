@@ -1,5 +1,6 @@
+import { DRAWDOWN_TRIPWIRE, drawdownPercent, hasDoubled } from './account';
 import type { Command } from './commands';
-import { isPrice } from './money';
+import { isPrice, toCents } from './money';
 import type { DerivedState } from './state';
 
 /**
@@ -13,9 +14,12 @@ import type { DerivedState } from './state';
 
 export const RULE_IDS = [
   'stop-required',
+  'drawdown-review',
   'liquidation-buffer',
   'one-position-at-a-time',
   'stop-never-widens',
+  'withdrawal-never-touches-the-base',
+  'withdrawal-waits-for-the-double',
 ] as const;
 
 /** Named on every Violation, so the log stores an id rather than prose. */
@@ -24,8 +28,12 @@ export type RuleId = (typeof RULE_IDS)[number];
 /**
  * When a Rule gets to act. Pre-fact Rules block a command before it happens
  * and can be overridden by typing a reason. Post-fact Rules can only warn,
- * because the Ledger must record what already happened — a Withdrawal is the
- * one of those, and it arrives with ticket 08.
+ * because the Ledger must record what already happened.
+ *
+ * The asymmetry is the whole design. The Drawdown tripwire acts before a
+ * trade, so it can genuinely stop one. A Withdrawal is money that has already
+ * left, and refusing to record it would not put it back — it would only leave
+ * every Position sized after it solved from a Balance that is too high.
  */
 export type RuleTiming = 'pre-fact' | 'post-fact';
 
@@ -56,6 +64,8 @@ export interface Rule {
  */
 export interface RuleVerdict {
   readonly ruleId: RuleId;
+  /** Whether this verdict can stop the command or only comment on it. */
+  readonly timing: RuleTiming;
   readonly overridable: boolean;
   readonly explanation: string;
 }
@@ -88,6 +98,40 @@ const stopRequired: Rule = {
     return (
       'Without a Stop there is no 1R, so nothing this trade produces could be measured — ' +
       'and no distance to solve a size from. Decide where the idea is wrong, or leave it.'
+    );
+  },
+};
+
+/**
+ * The Drawdown tripwire: at a 20% fall from Peak Balance, no new Plan until
+ * the log has been reviewed. It acts before the trade, so alone among the
+ * things the account can say about itself, it can genuinely stop one.
+ *
+ * The pause is the point rather than the threshold. The source notes' own
+ * simulations put the average peak-to-trough at around 42% even at 2% Risk, so
+ * 20% down is not a broken account — it is the moment those notes identify as
+ * where discipline actually breaks, and all this Rule does is make reading the
+ * log the thing that happens instead of the next trade.
+ *
+ * Judged on the derived tripwire rather than on the Drawdown alone, so the
+ * acknowledgement clears it and a recovery re-arms it — both of which are the
+ * fold's to work out, not this Rule's.
+ */
+const drawdownReview: Rule = {
+  id: 'drawdown-review',
+  name: `Review the log at a ${DRAWDOWN_TRIPWIRE * 100}% Drawdown`,
+  timing: 'pre-fact',
+  overridable: true,
+  verdict: (state, command) => {
+    // A new Plan only. One already sized and waiting was decided while the
+    // account was still inside the threshold, and blocking it here would
+    // strand it rather than pause anything.
+    if (command.type !== 'CreatePlan' || !state.drawdownReviewDue) return null;
+
+    return (
+      `You are ${drawdownPercent(state.drawdown).toFixed(1)}% down from a Peak Balance ` +
+      `of $${state.peakBalance.toFixed(2)}. Read the log and confirm it, and this opens ` +
+      'up on its own — the trade after a drawdown is the one the log has most to say about.'
     );
   },
 };
@@ -183,11 +227,64 @@ const stopNeverWidens: Rule = {
   },
 };
 
+/**
+ * The account is untouchable below the base: a Withdrawal takes profit, or it
+ * takes the compounding base itself, and only one of those is free. The source
+ * notes name draining the base for random reasons as the single biggest leak
+ * of the last attempt.
+ *
+ * It warns and never blocks, and that is not politeness. The money has already
+ * gone. Refusing to record it would only leave a Ledger claiming it is still
+ * there, and every Position sized from here would be sized off money the
+ * account does not have.
+ */
+const withdrawalNeverTouchesTheBase: Rule = {
+  id: 'withdrawal-never-touches-the-base',
+  name: 'A Withdrawal comes out of profit, never the base',
+  timing: 'post-fact',
+  overridable: false,
+  verdict: (state, command) => {
+    if (command.type !== 'RecordWithdrawal') return null;
+    const left = toCents(state.balance - command.amount);
+    if (left >= state.base) return null;
+
+    return (
+      `That takes $${(state.base - left).toFixed(2)} out of the base itself rather than ` +
+      'out of profit. The base is the thing that compounds — draining it is the leak that costs ' +
+      'every trade after it, because every Position from here is sized off what is left.'
+    );
+  },
+};
+
+/**
+ * And even out of profit, only once the account has doubled. Taking profit
+ * before then is how a base never grows to the point where 2% of it is worth
+ * having, which is the arithmetic the whole framework runs on.
+ */
+const withdrawalWaitsForTheDouble: Rule = {
+  id: 'withdrawal-waits-for-the-double',
+  name: 'Withdraw only once the account has doubled',
+  timing: 'post-fact',
+  overridable: false,
+  verdict: (state, command) => {
+    if (command.type !== 'RecordWithdrawal' || hasDoubled(state.balance, state.base)) return null;
+
+    return (
+      `The account has not doubled its base yet: that is $${(state.base * 2).toFixed(2)}, ` +
+      `and the Balance is $${state.balance.toFixed(2)}. By rule rather than by mood is ` +
+      'the whole difference between taking profit and draining the account.'
+    );
+  },
+};
+
 export const RULES: readonly Rule[] = [
   stopRequired,
+  drawdownReview,
   liquidationBuffer,
   onePositionAtATime,
   stopNeverWidens,
+  withdrawalNeverTouchesTheBase,
+  withdrawalWaitsForTheDouble,
 ];
 
 /** What a Rule is called, for a Violation that stored only its id. */
@@ -196,13 +293,34 @@ export function ruleName(ruleId: RuleId): string {
 }
 
 /**
- * Every Rule this command breaks, in the order the Rules are declared. An
- * empty list is a clear command; anything else is what the UI renders and what
- * an Override turns into Violations.
+ * Every Rule this command breaks, in the order the Rules are declared —
+ * whether the command can be stopped by them or not. Private, because the
+ * difference between the two is the point: everything outside this module
+ * asks for one kind or the other by name.
  */
-export function judge(state: DerivedState, command: Command): readonly RuleVerdict[] {
+function judge(state: DerivedState, command: Command): readonly RuleVerdict[] {
   return RULES.flatMap((rule) => {
     const explanation = rule.verdict(state, command);
-    return explanation === null ? [] : [{ ruleId: rule.id, overridable: rule.overridable, explanation }];
+    if (explanation === null) return [];
+    return [{ ruleId: rule.id, timing: rule.timing, overridable: rule.overridable, explanation }];
   });
+}
+
+/**
+ * The Rules that can stop this command: the ones that get to act before the
+ * thing they are about has happened. An empty list is a clear command;
+ * anything else is what the UI renders and what an Override turns into
+ * Violations.
+ */
+export function blocks(state: DerivedState, command: Command): readonly RuleVerdict[] {
+  return judge(state, command).filter((verdict) => verdict.timing === 'pre-fact');
+}
+
+/**
+ * The Rules that can only warn about it. A separate function rather than a
+ * filter at the call site, so that nothing downstream can mistake one of these
+ * for a block and refuse to record something that has already happened.
+ */
+export function warnings(state: DerivedState, command: Command): readonly RuleVerdict[] {
+  return judge(state, command).filter((verdict) => verdict.timing === 'post-fact');
 }

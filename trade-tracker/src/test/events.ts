@@ -5,11 +5,24 @@ import type {
   StopMoved,
   TradeTrackerEvent,
 } from '../core/events';
-import type { Violation } from '../core/rules';
+import type { RuleId, Violation } from '../core/rules';
 
 /** Shared across all three seams so a stored event looks the same everywhere. */
 export function deposit(amount: number, at: string): TradeTrackerEvent {
   return { type: 'Deposit', at, amount };
+}
+
+/**
+ * Money taken back out. The warnings default to none, so a test that is not
+ * about them reads as an ordinary Withdrawal.
+ */
+export function withdrawal(amount: number, at: string, warnings: RuleId[] = []): TradeTrackerEvent {
+  return { type: 'Withdrawal', at, amount, warnings };
+}
+
+/** The log review the tripwire asks for, once it has been done. */
+export function drawdownReviewAcknowledged(at: string): TradeTrackerEvent {
+  return { type: 'DrawdownReviewAcknowledged', at };
 }
 
 /**

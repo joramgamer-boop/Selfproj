@@ -64,25 +64,54 @@
   line-height: 1.1;
 }
 
-.deposit {
+.balance__account {
+  display: flex;
+  justify-content: center;
+  gap: 1.5rem;
+  margin: 0.625rem 0 0;
+  padding-top: 0.625rem;
+  border-top: 1px solid var(--edge);
+}
+
+.balance__figure {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.balance__figure dt {
+  font-size: 0.6875rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+
+.balance__figure dd {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.cash {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
 }
 
-.deposit__label {
+.cash__label {
   font-size: 0.75rem;
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--ink-dim);
 }
 
-.deposit__row {
+.cash__row {
   display: flex;
   gap: 0.5rem;
 }
 
-.deposit__input {
+.cash__input {
   flex: 1 1 auto;
   min-width: 0;
   /* 3rem clears the 44px minimum tap target, and 1.125rem clears the 16px
@@ -97,7 +126,7 @@
   border-radius: 0.5rem;
 }
 
-.deposit__submit {
+.cash__submit {
   flex: 0 0 auto;
   min-height: 3rem;
   padding: 0.75rem 1rem;
@@ -112,11 +141,11 @@
   touch-action: manipulation;
 }
 
-.deposit__submit:disabled {
+.cash__submit:disabled {
   opacity: 0.6;
 }
 
-.deposit__rejection {
+.cash__rejection {
   margin: 0;
   color: var(--alarm);
   font-size: 0.875rem;
@@ -790,4 +819,107 @@
 
 .violation__reason {
   color: var(--ink-dim);
+}
+
+/* The tripwire, once it has fired. Loud enough to be the thing on the screen,
+   and it leaves only when something has been written down. */
+.tripwire {
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+  padding: 0.875rem 1rem;
+  background: var(--panel);
+  border: 1px solid var(--alarm);
+  border-radius: 0.75rem;
+}
+
+.tripwire__label {
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 700;
+  color: var(--alarm);
+}
+
+.tripwire__why {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--ink-dim);
+}
+
+.tripwire__ack {
+  min-height: 3rem;
+  padding: 0.75rem 1rem;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--ink);
+  background: transparent;
+  border: 1px solid var(--edge);
+  border-radius: 0.5rem;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.tripwire__ack:disabled {
+  opacity: 0.6;
+}
+
+.tripwire__price,
+.tripwire__rejection {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--ink-dim);
+}
+
+.tripwire__rejection {
+  color: var(--alarm);
+}
+
+/* A Rule that can only warn. Shaped like the Override block above so the Rule
+   reads the same way, and pointedly without a button: there is nothing here to
+   get past, because the money has already moved. */
+.warning {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.75rem 0.875rem;
+  background: var(--panel);
+  border: 1px solid var(--warn);
+  border-radius: 0.75rem;
+}
+
+.warning__label {
+  margin: 0;
+  font-size: 0.75rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--warn);
+}
+
+.warning__rule {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.warning__rule-name {
+  font-weight: 600;
+}
+
+.warning__rule-why {
+  font-size: 0.875rem;
+  color: var(--ink-dim);
+}
+
+.warning__price {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--ink-dim);
+}
+
+/* The same warning, kept on the Ledger row for good. */
+.ledger__flag {
+  grid-column: 1 / -1;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--warn);
 }

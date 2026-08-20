@@ -1,16 +1,18 @@
 import type { ClosePosition, CreatePlan, MoveStop } from './commands';
-import { evaluate } from './commands';
+import { evaluate, withdrawalWarnings } from './commands';
 import { ABANDON_REASONS } from './plan';
 import { deriveState, emptyState } from './state';
 import { fixedClock } from './clock';
 import { sequentialIds } from './ids';
 import {
   deposit,
+  drawdownReviewAcknowledged,
   planAbandoned,
   planCreated,
   positionClosed,
   positionOpened,
   stopMoved,
+  withdrawal,
 } from '../test/events';
 
 const clock = fixedClock('2026-05-04T12:30:00.000Z');
@@ -590,5 +592,107 @@ describe('moving the Stop on an open Position', () => {
 
     expect(evaluate(tightened, moveTo(99), context())).toMatchObject({ outcome: 'append' });
     expect(evaluate(tightened, moveTo(98), context())).toMatchObject({ outcome: 'rejected' });
+  });
+});
+
+describe('recording a Withdrawal', () => {
+  const funded = deriveState([deposit(500, '2026-01-01T09:00:00.000Z')]);
+
+  it('produces a Withdrawal event for the amount given', () => {
+    const evaluation = evaluate(funded, { type: 'RecordWithdrawal', amount: 120 }, context());
+
+    expect(evaluation).toMatchObject({
+      outcome: 'append',
+      events: [{ type: 'Withdrawal', at: '2026-05-04T12:30:00.000Z', amount: 120 }],
+    });
+  });
+
+  it('records the amount to the cent, so the Ledger adds up to the Balance', () => {
+    const evaluation = evaluate(funded, { type: 'RecordWithdrawal', amount: 12.005 }, context());
+
+    expect(evaluation).toMatchObject({ events: [{ amount: 12.01 }] });
+  });
+
+  it('records one larger than the Balance rather than refusing what happened', () => {
+    // The Ledger's one promise. A Withdrawal the Balance cannot cover means
+    // something else is missing from the log, and refusing this one would only
+    // add a second error to the first.
+    expect(evaluate(funded, { type: 'RecordWithdrawal', amount: 900 }, context())).toMatchObject({
+      outcome: 'append',
+      events: [{ type: 'Withdrawal', amount: 900 }],
+    });
+  });
+
+  it('refuses an amount that is not an amount, because nothing happened', () => {
+    expect(evaluate(funded, { type: 'RecordWithdrawal', amount: 0 }, context())).toEqual({
+      outcome: 'rejected',
+      reason: expect.stringMatching(/greater than zero/i),
+    });
+  });
+
+  it('refuses a negative Withdrawal rather than reading it as a Deposit', () => {
+    expect(evaluate(funded, { type: 'RecordWithdrawal', amount: -50 }, context())).toMatchObject({
+      outcome: 'rejected',
+    });
+  });
+});
+
+describe('acknowledging the Drawdown review', () => {
+  const acknowledge = { type: 'AcknowledgeDrawdownReview' } as const;
+  const tripped = deriveState([
+    deposit(1000, '2026-01-01T09:00:00.000Z'),
+    withdrawal(200, '2026-02-01T09:00:00.000Z'),
+  ]);
+
+  it('produces the event the tripwire reads, stamped from the clock', () => {
+    expect(evaluate(tripped, acknowledge, context())).toEqual({
+      outcome: 'append',
+      events: [{ type: 'DrawdownReviewAcknowledged', at: '2026-05-04T12:30:00.000Z' }],
+    });
+  });
+
+  it('refuses when the account is not down past the tripwire', () => {
+    const healthy = deriveState([deposit(1000, '2026-01-01T09:00:00.000Z')]);
+
+    expect(evaluate(healthy, acknowledge, context())).toMatchObject({
+      outcome: 'rejected',
+      reason: expect.stringMatching(/nothing/i),
+    });
+  });
+
+  it('refuses a second acknowledgement of the same fall', () => {
+    // Not a Rule and not overridable: the tripwire is already answered, so the
+    // tap records nothing and would only put a second row in the log saying
+    // the same thing.
+    const answered = deriveState([
+      deposit(1000, '2026-01-01T09:00:00.000Z'),
+      withdrawal(200, '2026-02-01T09:00:00.000Z'),
+      drawdownReviewAcknowledged('2026-02-01T10:00:00.000Z'),
+    ]);
+
+    expect(evaluate(answered, acknowledge, context())).toMatchObject({
+      outcome: 'rejected',
+      reason: expect.stringMatching(/already/i),
+    });
+  });
+});
+
+describe('previewing what the Rules make of a Withdrawal', () => {
+  const funded = deriveState([deposit(500, '2026-01-01T09:00:00.000Z')]);
+
+  it('says nothing while there is no amount to judge', () => {
+    expect(withdrawalWarnings(funded, Number.NaN)).toEqual([]);
+    expect(withdrawalWarnings(funded, 0)).toEqual([]);
+  });
+
+  it('gives exactly the warnings the recorded event goes on to carry', () => {
+    // The screen shows this and the command stores that, so the two rounding
+    // the amount differently would flag one thing and write another.
+    const previewed = withdrawalWarnings(funded, 12.005).map((verdict) => verdict.ruleId);
+
+    expect(previewed).not.toHaveLength(0);
+    expect(evaluate(funded, { type: 'RecordWithdrawal', amount: 12.005 }, context())).toMatchObject({
+      events: [{ amount: 12.01, warnings: previewed }],
+    });
   });
 });

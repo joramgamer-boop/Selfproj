@@ -1,10 +1,11 @@
+import { isPastTripwire } from './account';
 import { isInstant, type Clock } from './clock';
 import type { TradeTrackerEvent } from './events';
 import type { IdSource } from './ids';
 import { isPrice, isRecordableAmount, toCents } from './money';
 import { isAbandonReason, type PlanInputs } from './plan';
 import { isPlannableRiskFraction, roundRiskFraction } from './risk';
-import { judge, type RuleVerdict, type Violation } from './rules';
+import { blocks, warnings, type RuleVerdict, type Violation } from './rules';
 import { closeOut } from './settlement';
 import { sizeNewPlan } from './sizing';
 import type { DerivedState, Position } from './state';
@@ -28,6 +29,23 @@ interface Overridable {
 export interface RecordDeposit {
   readonly type: 'RecordDeposit';
   readonly amount: number;
+}
+
+/**
+ * Money taken back out. Not Overridable, and not because it is safe: the Rules
+ * that judge it are post-fact, so there is no block for an Override to answer.
+ * A Withdrawal has already happened by the time it is typed in, and the app's
+ * only remaining power over it is to say so on the row for good.
+ */
+export interface RecordWithdrawal {
+  readonly type: 'RecordWithdrawal';
+  /** Positive. Which way it moves the Balance is the command, not the sign. */
+  readonly amount: number;
+}
+
+/** Confirming the log has been read after the Drawdown tripwire fired. */
+export interface AcknowledgeDrawdownReview {
+  readonly type: 'AcknowledgeDrawdownReview';
 }
 
 /** Everything the trader types on the Plan screen. Notional is not offered. */
@@ -79,6 +97,8 @@ export interface SetRiskDefault {
 
 export type Command =
   | RecordDeposit
+  | RecordWithdrawal
+  | AcknowledgeDrawdownReview
   | CreatePlan
   | AbandonPlan
   | OpenPosition
@@ -120,6 +140,10 @@ export function evaluate(
   switch (command.type) {
     case 'RecordDeposit':
       return evaluateRecordDeposit(command, context);
+    case 'RecordWithdrawal':
+      return evaluateRecordWithdrawal(state, command, context);
+    case 'AcknowledgeDrawdownReview':
+      return evaluateAcknowledgeDrawdownReview(state, context);
     case 'CreatePlan':
       return evaluateCreatePlan(state, command, context);
     case 'AbandonPlan':
@@ -145,8 +169,13 @@ type RuleOutcome =
   | { readonly outcome: 'blocked'; readonly verdicts: readonly RuleVerdict[] }
   | { readonly outcome: 'rejected'; readonly reason: string };
 
+/**
+ * Only the Rules that get to act before the fact. A post-fact Rule never
+ * reaches here: it has nothing to stop, and the command it comments on writes
+ * its verdicts onto the event instead.
+ */
 function applyRules(state: DerivedState, command: Command): RuleOutcome {
-  const verdicts = judge(state, command);
+  const verdicts = blocks(state, command);
   if (verdicts.length === 0) return { outcome: 'clear', violations: [] };
 
   // A Rule no reason can answer refuses outright rather than blocking. It
@@ -188,6 +217,88 @@ function evaluateRecordDeposit(command: RecordDeposit, { clock }: CommandContext
         amount: toCents(command.amount),
       },
     ],
+  };
+}
+
+/**
+ * What the Rules will say about a Withdrawal of this size, judged exactly as
+ * recording it would judge it — the same rounding, against the same state.
+ *
+ * It exists so the screen can show the warning while the amount is still being
+ * typed, which is the only moment it can still change anything, without the
+ * form evaluating a Rule itself. A preview that rounded differently from the
+ * command would flag one thing on screen and write another to the row.
+ */
+export function withdrawalWarnings(
+  state: DerivedState,
+  amount: number,
+): readonly RuleVerdict[] {
+  // Nothing to judge until there is an amount: a half-typed field is not a
+  // Withdrawal, and whether what is there is recordable is decided below.
+  if (!isRecordableAmount(amount)) return [];
+  return warnings(state, { type: 'RecordWithdrawal', amount: toCents(amount) });
+}
+
+/**
+ * Recording money that has already left the account. The Rules about it warn
+ * and cannot block, so this has exactly one thing to refuse: an amount that is
+ * not an amount, which is not a Withdrawal that happened but a slip of the
+ * thumb with nothing behind it.
+ *
+ * Everything else goes in, a Balance it overdraws included. Every Position
+ * from here is sized off the Balance folded from this Ledger, so the one
+ * unrecorded Withdrawal is the expensive one: it does not stay a gap, it
+ * silently oversizes every trade that follows.
+ */
+function evaluateRecordWithdrawal(
+  state: DerivedState,
+  command: RecordWithdrawal,
+  { clock }: CommandContext,
+): Evaluation {
+  if (!isRecordableAmount(command.amount)) {
+    return { outcome: 'rejected', reason: 'A Withdrawal must be an amount greater than zero.' };
+  }
+
+  const amount = toCents(command.amount);
+
+  return {
+    outcome: 'append',
+    events: [
+      {
+        type: 'Withdrawal',
+        at: clock.now().toISOString(),
+        amount,
+        // The same verdicts the screen showed, stored by id: the row keeps
+        // what the Rules said at the time, and no later Deposit can make the
+        // Ledger read better than it did.
+        warnings: withdrawalWarnings(state, amount).map((verdict) => verdict.ruleId),
+      },
+    ],
+  };
+}
+
+/**
+ * Answering the tripwire. There is no Rule to break here and nothing to
+ * override — the only question is whether there is a fall to acknowledge, and
+ * an acknowledgement of nothing is a row in the log that means nothing.
+ */
+function evaluateAcknowledgeDrawdownReview(
+  state: DerivedState,
+  { clock }: CommandContext,
+): Evaluation {
+  if (!isPastTripwire(state.drawdown)) {
+    return {
+      outcome: 'rejected',
+      reason: 'There is nothing to review — the account is not down past the tripwire.',
+    };
+  }
+  if (!state.drawdownReviewDue) {
+    return { outcome: 'rejected', reason: 'You have already acknowledged this one.' };
+  }
+
+  return {
+    outcome: 'append',
+    events: [{ type: 'DrawdownReviewAcknowledged', at: clock.now().toISOString() }],
   };
 }
 

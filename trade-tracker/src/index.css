@@ -8,6 +8,9 @@
   --edge: #263140;
   --accent: #4ade80;
   --alarm: #f87171;
+  /* A Rule that can only warn. Deliberately not --alarm: a block and a thing
+     that already happened must not look like the same event. */
+  --warn: #fbbf24;
 
   color-scheme: dark;
   font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;

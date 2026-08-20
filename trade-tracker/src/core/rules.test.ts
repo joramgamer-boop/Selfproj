@@ -1,9 +1,23 @@
-import { evaluate, type CreatePlan, type MoveStop, type OpenPosition } from './commands';
+import {
+  evaluate,
+  type CreatePlan,
+  type MoveStop,
+  type OpenPosition,
+  type RecordWithdrawal,
+} from './commands';
 import { fixedClock } from './clock';
 import { sequentialIds } from './ids';
-import { RULES } from './rules';
+import { RULES, warnings } from './rules';
 import { deriveState } from './state';
-import { deposit, planCreated, positionClosed, positionOpened, stopMoved } from '../test/events';
+import {
+  deposit,
+  drawdownReviewAcknowledged,
+  planCreated,
+  positionClosed,
+  positionOpened,
+  stopMoved,
+  withdrawal,
+} from '../test/events';
 
 const clock = fixedClock('2026-05-04T12:30:00.000Z');
 const context = () => ({ clock, ids: sequentialIds() });
@@ -33,10 +47,21 @@ describe('the Rules themselves', () => {
     });
   });
 
-  it('leaves a way through every Rule but the one that would leave nothing to record', () => {
-    expect(RULES.filter((rule) => !rule.overridable).map((rule) => rule.id)).toEqual([
+  it('leaves a way through every blocking Rule but the one that would leave nothing to record', () => {
+    const blocking = RULES.filter((rule) => rule.timing === 'pre-fact');
+
+    expect(blocking.filter((rule) => !rule.overridable).map((rule) => rule.id)).toEqual([
       'stop-required',
     ]);
+  });
+
+  it('offers no way through a Rule that only warns, because there is no way to be stopped', () => {
+    // Not a dead end like the Stop Rule is: a post-fact Rule never blocks, so
+    // there is nothing an Override could be answering.
+    const warningOnly = RULES.filter((rule) => rule.timing === 'post-fact');
+
+    expect(warningOnly).not.toHaveLength(0);
+    expect(warningOnly.every((rule) => !rule.overridable)).toBe(true);
   });
 
   it('gives every Rule an id of its own, since a Violation names one', () => {
@@ -347,6 +372,170 @@ describe('the Rule that a Stop tightens and never widens', () => {
     expect(evaluate(deriveState([funded, planned]), move(94), context())).toMatchObject({
       outcome: 'rejected',
       reason: expect.stringMatching(/no Position open/i),
+    });
+  });
+});
+
+describe('the Drawdown tripwire Rule', () => {
+  const funded = deposit(1000, '2026-01-01T09:00:00.000Z');
+  const downTwenty = withdrawal(200, '2026-02-01T09:00:00.000Z');
+  const reviewed = drawdownReviewAcknowledged('2026-02-01T10:00:00.000Z');
+  const thousand = deriveState([funded]);
+
+  it('lets a Plan through while the account is inside the tripwire', () => {
+    expect(evaluate(thousand, aLong, context())).toMatchObject({ outcome: 'append' });
+  });
+
+  it('blocks a new Plan once the Drawdown reaches a fifth', () => {
+    expect(evaluate(deriveState([funded, downTwenty]), aLong, context())).toMatchObject({
+      outcome: 'blocked',
+      verdicts: [{ ruleId: 'drawdown-review' }],
+    });
+  });
+
+  it('says how far down the account is, so the block is arguable', () => {
+    expect(evaluate(deriveState([funded, downTwenty]), aLong, context())).toMatchObject({
+      verdicts: [{ explanation: expect.stringContaining('20') }],
+    });
+  });
+
+  it('lets the Plan through once the log review has been acknowledged', () => {
+    expect(
+      evaluate(deriveState([funded, downTwenty, reviewed]), aLong, context()),
+    ).toMatchObject({ outcome: 'append' });
+  });
+
+  it('blocks again once the Drawdown recovers and falls past a fifth afresh', () => {
+    const rearmed = deriveState([
+      funded,
+      downTwenty,
+      reviewed,
+      deposit(300, '2026-03-01T09:00:00.000Z'),
+      withdrawal(300, '2026-04-01T09:00:00.000Z'),
+    ]);
+
+    expect(evaluate(rearmed, aLong, context())).toMatchObject({
+      outcome: 'blocked',
+      verdicts: [{ ruleId: 'drawdown-review' }],
+    });
+  });
+
+  it('leaves a way through by typing a reason, and records the Violation', () => {
+    const insisted = evaluate(
+      deriveState([funded, downTwenty]),
+      { ...aLong, override: { reason: 'Reviewed on paper this morning.' } },
+      context(),
+    );
+
+    expect(insisted).toMatchObject({
+      outcome: 'append',
+      events: [
+        {
+          type: 'PlanCreated',
+          violations: [
+            { ruleId: 'drawdown-review', reason: 'Reviewed on paper this morning.' },
+          ],
+        },
+      ],
+    });
+  });
+
+  it('says nothing about taking a Plan that was already sized live', () => {
+    // The tripwire acts before the trade is planned. A Position already sized
+    // and waiting is a decision that was made inside the threshold, and
+    // blocking it here would only strand it.
+    const sized = deriveState([funded, downTwenty, planCreated({ at: '2026-02-02T09:00:00.000Z' })]);
+
+    expect(evaluate(sized, { type: 'OpenPosition', planId: 'plan-1' }, context())).toMatchObject({
+      outcome: 'append',
+    });
+  });
+});
+
+describe('the Rules about a Withdrawal', () => {
+  const takeOut = (amount: number): RecordWithdrawal => ({ type: 'RecordWithdrawal', amount });
+  const openedAt = '2026-01-03T09:00:00.000Z';
+
+  /** The standard long on a $500 Balance, taken clean to `exitPrice`. */
+  const wonAt = (exitPrice: number) => [
+    deposit(500, '2026-01-01T09:00:00.000Z'),
+    planCreated({ at: '2026-01-02T09:00:00.000Z' }),
+    positionOpened(openedAt),
+    positionClosed({
+      at: '2026-01-04T09:00:00.000Z',
+      openedAt,
+      exitPrice,
+      bestPrice: exitPrice,
+      fees: 0,
+    }),
+  ];
+
+  // Base of 500 traded up to 1250: doubled, with 750 of profit above the base.
+  const doubled = deriveState(wonAt(400));
+  // Base of 500 up to 600: profit to take, but nowhere near a double.
+  const upALittle = deriveState(wonAt(140));
+
+  it('classes both as after the fact, so neither can ever block', () => {
+    const aboutWithdrawals = RULES.filter((rule) => rule.id.startsWith('withdrawal-'));
+
+    expect(aboutWithdrawals).toHaveLength(2);
+    expect(aboutWithdrawals.map((rule) => rule.timing)).toEqual(['post-fact', 'post-fact']);
+  });
+
+  it('records a Withdrawal out of profit on a doubled account with nothing said', () => {
+    expect(evaluate(doubled, takeOut(300), context())).toMatchObject({
+      outcome: 'append',
+      events: [{ type: 'Withdrawal', amount: 300, warnings: [] }],
+    });
+  });
+
+  it('warns when the Withdrawal digs into the base, and records it anyway', () => {
+    expect(evaluate(doubled, takeOut(900), context())).toMatchObject({
+      outcome: 'append',
+      events: [{ type: 'Withdrawal', amount: 900, warnings: ['withdrawal-never-touches-the-base'] }],
+    });
+  });
+
+  it('says how much of the base the Withdrawal would take', () => {
+    expect(warnings(doubled, takeOut(900))).toMatchObject([
+      { ruleId: 'withdrawal-never-touches-the-base', explanation: expect.stringContaining('150') },
+    ]);
+  });
+
+  it('warns when the account has not doubled, and records it anyway', () => {
+    expect(evaluate(upALittle, takeOut(50), context())).toMatchObject({
+      outcome: 'append',
+      events: [{ type: 'Withdrawal', warnings: ['withdrawal-waits-for-the-double'] }],
+    });
+  });
+
+  it('flags both when a Withdrawal breaks both, still without blocking', () => {
+    const flat = deriveState([deposit(500, '2026-01-01T09:00:00.000Z')]);
+
+    expect(evaluate(flat, takeOut(200), context())).toMatchObject({
+      outcome: 'append',
+      events: [
+        {
+          type: 'Withdrawal',
+          warnings: ['withdrawal-never-touches-the-base', 'withdrawal-waits-for-the-double'],
+        },
+      ],
+    });
+  });
+
+  it('never blocks, so an Override is never asked for', () => {
+    // A post-fact Rule has no way through for the same reason it has no wall:
+    // the thing it is about has already happened, and the only question left
+    // is whether the Ledger says so.
+    expect(evaluate(deriveState([]), takeOut(900), context())).toMatchObject({
+      outcome: 'append',
+    });
+  });
+
+  it('says nothing about a Deposit, whichever way the account stands', () => {
+    expect(evaluate(upALittle, { type: 'RecordDeposit', amount: 100 }, context())).toMatchObject({
+      outcome: 'append',
+      events: [{ type: 'Deposit' }],
     });
   });
 });

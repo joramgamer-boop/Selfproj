@@ -7,7 +7,13 @@ import { createMemoryEventStore } from './storage/memoryEventStore';
 import type { EventStore } from './storage/eventStore';
 import type { DurableStorage } from './storage/durability';
 import type { TradeTrackerEvent } from './core/events';
-import { deposit, planCreated, positionOpened } from './test/events';
+import {
+  deposit,
+  planCreated,
+  positionClosed,
+  positionOpened,
+  withdrawal,
+} from './test/events';
 import { toDateTimeInput } from './format';
 
 const clock = fixedClock('2026-05-04T12:30:00.000Z');
@@ -691,5 +697,208 @@ describe('moving the Stop on a live Position', () => {
 
     expect(await screen.findByText(/the stop is already there/i)).toBeInTheDocument();
     expect(log).toHaveLength(3);
+  });
+});
+
+describe('what the account says about itself', () => {
+  it('shows Peak Balance and no Drawdown while the Balance is at its peak', async () => {
+    renderApp([deposit(1000, '2026-01-01T09:00:00.000Z')]);
+
+    expect(await screen.findByLabelText(/peak balance/i)).toHaveTextContent('$1,000.00');
+    expect(screen.getByLabelText(/^drawdown$/i)).toHaveTextContent('0.0%');
+  });
+
+  it('keeps Peak Balance and Drawdown on screen once the Balance has fallen', async () => {
+    renderApp([
+      deposit(1000, '2026-01-01T09:00:00.000Z'),
+      withdrawal(250, '2026-02-01T09:00:00.000Z'),
+    ]);
+
+    expect(await screen.findByLabelText(/^balance$/i)).toHaveTextContent('$750.00');
+    expect(screen.getByLabelText(/peak balance/i)).toHaveTextContent('$1,000.00');
+    expect(screen.getByLabelText(/^drawdown$/i)).toHaveTextContent('25.0%');
+  });
+});
+
+describe('recording a Withdrawal', () => {
+  async function recordWithdrawal(amount: string) {
+    const user = userEvent.setup();
+    await user.type(await screen.findByLabelText(/withdrawal amount/i), amount);
+    await user.click(screen.getByRole('button', { name: /record withdrawal/i }));
+  }
+
+  // Deposited 500 and traded up to 1250, so there is profit to take and the
+  // account has doubled: the one shape of Withdrawal no Rule warns about.
+  const doubled = () => [
+    deposit(500, '2026-01-01T09:00:00.000Z'),
+    planCreated({ at: '2026-01-02T09:00:00.000Z' }),
+    positionOpened('2026-01-03T09:00:00.000Z'),
+    positionClosed({
+      at: '2026-01-04T09:00:00.000Z',
+      openedAt: '2026-01-03T09:00:00.000Z',
+      exitPrice: 400,
+      bestPrice: 400,
+      fees: 0,
+    }),
+  ];
+
+  it('takes it off the Balance and shows it in the Ledger as a debit', async () => {
+    renderApp(doubled());
+
+    await recordWithdrawal('300');
+
+    expect(await screen.findByLabelText(/^balance$/i)).toHaveTextContent('$950.00');
+    const entries = screen.getAllByRole('listitem', { name: /ledger entry/i });
+    expect(entries.at(0)).toHaveTextContent('Withdrawal');
+    expect(entries.at(0)).toHaveTextContent('-$300.00');
+  });
+
+  it('says nothing when the Withdrawal comes out of profit on a doubled account', async () => {
+    renderApp(doubled());
+
+    await recordWithdrawal('300');
+
+    await screen.findAllByRole('listitem', { name: /ledger entry/i });
+    expect(screen.queryByLabelText(/warning/i)).not.toBeInTheDocument();
+  });
+
+  it('warns while the amount is still being typed, before anything is recorded', async () => {
+    const { log } = renderApp(doubled());
+    const before = log.length;
+
+    await userEvent.setup().type(await screen.findByLabelText(/withdrawal amount/i), '900');
+
+    expect(await screen.findByLabelText(/warning/i)).toHaveTextContent(/out of the base itself/i);
+    expect(log).toHaveLength(before);
+  });
+
+  it('records it anyway, and flags the row with the Rule it broke for good', async () => {
+    const { log } = renderApp(doubled());
+
+    await recordWithdrawal('900');
+
+    expect(await screen.findByLabelText(/^balance$/i)).toHaveTextContent('$350.00');
+    expect(screen.getAllByRole('listitem', { name: /ledger entry/i }).at(0)).toHaveTextContent(
+      /never the base/i,
+    );
+    expect(log).toContainEqual(
+      expect.objectContaining({
+        type: 'Withdrawal',
+        amount: 900,
+        warnings: ['withdrawal-never-touches-the-base'],
+      }),
+    );
+  });
+
+  it('warns about a Withdrawal before the account has doubled, and still records it', async () => {
+    const { log } = renderApp([deposit(500, '2026-01-01T09:00:00.000Z')]);
+
+    await recordWithdrawal('100');
+
+    expect(await screen.findByLabelText(/^balance$/i)).toHaveTextContent('$400.00');
+    await waitFor(() =>
+      expect(log).toContainEqual(
+        expect.objectContaining({
+          type: 'Withdrawal',
+          warnings: ['withdrawal-never-touches-the-base', 'withdrawal-waits-for-the-double'],
+        }),
+      ),
+    );
+  });
+
+  it('refuses an amount that is not an amount, and records nothing', async () => {
+    const { log } = renderApp(doubled());
+    const before = log.length;
+
+    await recordWithdrawal('0');
+
+    expect(await screen.findByText(/greater than zero/i)).toBeInTheDocument();
+    expect(log).toHaveLength(before);
+  });
+});
+
+describe('the Drawdown tripwire', () => {
+  // 1000 down to 800: exactly a fifth, and the tripwire fires.
+  const trippedUp = () => [
+    deposit(1000, '2026-01-01T09:00:00.000Z'),
+    withdrawal(200, '2026-02-01T09:00:00.000Z'),
+  ];
+
+  async function fillPlan() {
+    const user = userEvent.setup();
+    await user.type(await screen.findByLabelText(/entry price/i), '100');
+    await user.type(screen.getByLabelText(/^stop$/i), '96');
+    await user.type(screen.getByLabelText(/leverage/i), '5');
+    await user.type(screen.getByLabelText(/liquidation price/i), '80');
+  }
+
+  it('says where the account stands before a Plan is even attempted', async () => {
+    renderApp(trippedUp());
+
+    const banner = await screen.findByLabelText(/drawdown tripwire/i);
+    expect(banner).toHaveTextContent(/20.0%/);
+    expect(banner).toHaveTextContent(/review/i);
+  });
+
+  it('blocks a new Plan until the log review is acknowledged', async () => {
+    renderApp(trippedUp());
+    await fillPlan();
+    await userEvent.setup().click(screen.getByRole('button', { name: /create plan/i }));
+
+    expect(await screen.findByLabelText(/blocked by a rule/i)).toHaveTextContent(
+      /review the log at a 20% drawdown/i,
+    );
+    expect(screen.queryByRole('listitem', { name: /plan/i })).not.toBeInTheDocument();
+  });
+
+  it('lets the Plan through once the review is acknowledged, and records the review', async () => {
+    const { log } = renderApp(trippedUp());
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('button', { name: /reviewed the log/i }));
+
+    await waitFor(() =>
+      expect(log).toContainEqual(expect.objectContaining({ type: 'DrawdownReviewAcknowledged' })),
+    );
+    expect(screen.queryByLabelText(/drawdown tripwire/i)).not.toBeInTheDocument();
+
+    await fillPlan();
+    await user.click(screen.getByRole('button', { name: /create plan/i }));
+
+    expect(await screen.findByRole('listitem', { name: /plan/i })).toBeInTheDocument();
+  });
+
+  it('keeps the Drawdown on screen after the review, because it is still there', async () => {
+    renderApp(trippedUp());
+
+    await userEvent.setup().click(await screen.findByRole('button', { name: /reviewed the log/i }));
+
+    await waitFor(() =>
+      expect(screen.queryByLabelText(/drawdown tripwire/i)).not.toBeInTheDocument(),
+    );
+    expect(screen.getByLabelText(/^drawdown$/i)).toHaveTextContent('20.0%');
+  });
+
+  it('takes an Override instead, and records the Violation on the Plan', async () => {
+    const { log } = renderApp(trippedUp());
+    const user = userEvent.setup();
+
+    await fillPlan();
+    await user.click(screen.getByRole('button', { name: /create plan/i }));
+    await screen.findByLabelText(/blocked by a rule/i);
+
+    await user.type(screen.getByLabelText(/why are you doing it anyway/i), 'Read it on the way in.');
+    await user.click(screen.getByRole('button', { name: /create plan anyway/i }));
+
+    const plan = await screen.findByRole('listitem', { name: /plan/i });
+    expect(plan).toHaveTextContent(/violation — review the log at a 20% drawdown/i);
+    await waitFor(() =>
+      expect(log).toContainEqual(
+        expect.objectContaining({
+          type: 'PlanCreated',
+          violations: [{ ruleId: 'drawdown-review', reason: 'Read it on the way in.' }],
+        }),
+      ),
+    );
   });
 });

@@ -1,12 +1,14 @@
 import { deriveState } from './state';
 import {
   deposit,
+  drawdownReviewAcknowledged,
   planAbandoned,
   planCreated,
   positionClosed,
   positionOpened,
   riskDefaultChanged,
   stopMoved,
+  withdrawal,
 } from '../test/events';
 
 describe('Balance', () => {
@@ -51,6 +53,7 @@ describe('the Ledger', () => {
         at: '2026-01-01T09:00:00.000Z',
         amount: 500,
         balanceAfter: 500,
+        warnings: [],
       },
       {
         seq: 1,
@@ -58,6 +61,7 @@ describe('the Ledger', () => {
         at: '2026-02-01T09:00:00.000Z',
         amount: 250,
         balanceAfter: 750,
+        warnings: [],
       },
     ]);
   });
@@ -295,6 +299,7 @@ describe('closing a Position into a Trade', () => {
       at: closedAt,
       amount: 24,
       balanceAfter: 524,
+      warnings: [],
     });
   });
 
@@ -591,5 +596,285 @@ describe('moving the Stop on an open Position', () => {
     expect(() => deriveState([funded, stopMoved({ at: movedAt, planId: 'plan-9' })])).toThrow(
       /plan-9/,
     );
+  });
+});
+
+describe('a Withdrawal', () => {
+  const funded = deposit(500, '2026-01-01T09:00:00.000Z');
+  const takenOut = '2026-02-01T09:00:00.000Z';
+
+  it('comes off the Balance', () => {
+    expect(deriveState([funded, withdrawal(120, takenOut)]).balance).toBe(380);
+  });
+
+  it('reaches the Ledger as a debit, against the Balance it left behind', () => {
+    const state = deriveState([funded, withdrawal(120, takenOut)]);
+
+    expect(state.ledger.at(-1)).toEqual({
+      seq: 1,
+      kind: 'Withdrawal',
+      at: takenOut,
+      // Signed, like every other row: what a Withdrawal did to the Balance is
+      // the whole of what the Ledger records about it.
+      amount: -120,
+      balanceAfter: 380,
+      warnings: [],
+    });
+  });
+
+  it('carries the warnings it was recorded with onto the Ledger row, for good', () => {
+    const state = deriveState([
+      funded,
+      withdrawal(120, takenOut, ['withdrawal-never-touches-the-base']),
+    ]);
+
+    expect(state.ledger.at(-1)?.warnings).toEqual(['withdrawal-never-touches-the-base']);
+  });
+
+  it('does not drift when the amounts have cents', () => {
+    const state = deriveState([
+      deposit(0.3, '2026-01-01T09:00:00.000Z'),
+      withdrawal(0.1, takenOut),
+    ]);
+
+    expect(state.balance).toBe(0.2);
+  });
+
+  it('is folded even when it takes the Balance below zero, because it happened', () => {
+    // The Ledger never refuses reality: a Withdrawal the Balance cannot cover
+    // means the log is missing something, and hiding it would corrupt the
+    // sizing of every Plan after it rather than make it right.
+    expect(deriveState([funded, withdrawal(600, takenOut)]).balance).toBe(-100);
+  });
+});
+
+describe('the base', () => {
+  const funded = deposit(500, '2026-01-01T09:00:00.000Z');
+  const openedAt = '2026-01-03T09:00:00.000Z';
+
+  it('is nothing before anything has been put in', () => {
+    expect(deriveState([]).base).toBe(0);
+  });
+
+  it('is everything that has been deposited', () => {
+    expect(deriveState([funded, deposit(250, '2026-02-01T09:00:00.000Z')]).base).toBe(750);
+  });
+
+  it('is untouched by a Withdrawal that came out of profit', () => {
+    const state = deriveState([
+      funded,
+      planCreated({ at: '2026-01-02T09:00:00.000Z' }),
+      positionOpened(openedAt),
+      // The standard long taken to 400: +$750 on a base of 500.
+      positionClosed({
+        at: '2026-01-04T09:00:00.000Z',
+        openedAt,
+        exitPrice: 400,
+        bestPrice: 400,
+        fees: 0,
+      }),
+      withdrawal(300, '2026-02-01T09:00:00.000Z'),
+    ]);
+
+    expect(state.balance).toBe(950);
+    expect(state.base).toBe(500);
+  });
+
+  it('falls to what a Withdrawal left behind once it dug into it', () => {
+    const state = deriveState([funded, withdrawal(120, '2026-02-01T09:00:00.000Z')]);
+
+    expect(state.base).toBe(380);
+  });
+
+  it('survives a losing Trade, because money lost trading is still money put in', () => {
+    const state = deriveState([
+      funded,
+      planCreated({ at: '2026-01-02T09:00:00.000Z' }),
+      positionOpened(openedAt),
+      positionClosed({ at: '2026-01-04T09:00:00.000Z', openedAt, exitPrice: 96, bestPrice: 101 }),
+    ]);
+
+    expect(state.balance).toBeLessThan(500);
+    expect(state.base).toBe(500);
+  });
+});
+
+describe('Peak Balance and Drawdown', () => {
+  const funded = deposit(1000, '2026-01-01T09:00:00.000Z');
+  const openedAt = '2026-01-03T09:00:00.000Z';
+  const losingTrade = [
+    planCreated({ at: '2026-01-02T09:00:00.000Z' }),
+    positionOpened(openedAt),
+    // Stopped out on the standard long: -$20 gross on a 1000 Balance, $1 fees.
+    positionClosed({ at: '2026-01-04T09:00:00.000Z', openedAt, exitPrice: 96, bestPrice: 101 }),
+  ];
+
+  it('are nothing at all before the account exists', () => {
+    expect(deriveState([])).toMatchObject({ peakBalance: 0, drawdown: 0 });
+  });
+
+  it('put the peak at the highest Balance the Ledger ever reached', () => {
+    const state = deriveState([
+      funded,
+      withdrawal(400, '2026-02-01T09:00:00.000Z'),
+      deposit(100, '2026-03-01T09:00:00.000Z'),
+    ]);
+
+    expect(state.balance).toBe(700);
+    expect(state.peakBalance).toBe(1000);
+  });
+
+  it('read no Drawdown while the Balance is at its peak', () => {
+    expect(deriveState([funded])).toMatchObject({ peakBalance: 1000, drawdown: 0 });
+  });
+
+  it('count a Withdrawal as a fall from the peak, since the peak is the Ledgers own', () => {
+    const state = deriveState([funded, withdrawal(250, '2026-02-01T09:00:00.000Z')]);
+
+    expect(state).toMatchObject({ peakBalance: 1000, balance: 750, drawdown: 0.25 });
+  });
+
+  it('count a losing Trade as a fall from the peak', () => {
+    const state = deriveState([funded, ...losingTrade]);
+
+    expect(state).toMatchObject({ peakBalance: 1000, balance: 979, drawdown: 0.021 });
+  });
+
+  it('measure the fall from the peak rather than from what was deposited', () => {
+    const state = deriveState([
+      funded,
+      deposit(1000, '2026-01-02T09:00:00.000Z'),
+      withdrawal(500, '2026-02-01T09:00:00.000Z'),
+    ]);
+
+    // 2000 down to 1500 is a quarter, though the account is still up on the
+    // 1000 it started with.
+    expect(state).toMatchObject({ peakBalance: 2000, drawdown: 0.25 });
+  });
+
+  it('take a Deposit as a new peak once it lifts the Balance past the old one', () => {
+    const state = deriveState([
+      funded,
+      withdrawal(400, '2026-02-01T09:00:00.000Z'),
+      deposit(700, '2026-03-01T09:00:00.000Z'),
+    ]);
+
+    expect(state).toMatchObject({ peakBalance: 1300, drawdown: 0 });
+  });
+});
+
+describe('the Drawdown tripwire', () => {
+  const funded = deposit(1000, '2026-01-01T09:00:00.000Z');
+  const downTwenty = withdrawal(200, '2026-02-01T09:00:00.000Z');
+
+  it('is clear on an account that has never fallen', () => {
+    expect(deriveState([funded]).drawdownReviewDue).toBe(false);
+  });
+
+  it('is clear a hair short of a fifth down', () => {
+    const state = deriveState([funded, withdrawal(199, '2026-02-01T09:00:00.000Z')]);
+
+    expect(state.drawdown).toBe(0.199);
+    expect(state.drawdownReviewDue).toBe(false);
+  });
+
+  it('fires at exactly a fifth down', () => {
+    const state = deriveState([funded, downTwenty]);
+
+    expect(state.drawdown).toBe(0.2);
+    expect(state.drawdownReviewDue).toBe(true);
+  });
+
+  it('clears once the review has been acknowledged', () => {
+    const state = deriveState([
+      funded,
+      downTwenty,
+      drawdownReviewAcknowledged('2026-02-01T10:00:00.000Z'),
+    ]);
+
+    // The Drawdown is still there: acknowledging reviews the log, it does not
+    // recover the account.
+    expect(state.drawdown).toBe(0.2);
+    expect(state.drawdownReviewDue).toBe(false);
+  });
+
+  it('stays clear while the Drawdown deepens after the review', () => {
+    const state = deriveState([
+      funded,
+      downTwenty,
+      drawdownReviewAcknowledged('2026-02-01T10:00:00.000Z'),
+      withdrawal(100, '2026-03-01T09:00:00.000Z'),
+    ]);
+
+    expect(state.drawdown).toBe(0.3);
+    expect(state.drawdownReviewDue).toBe(false);
+  });
+
+  it('re-arms once the Drawdown recovers and falls past a fifth again', () => {
+    const state = deriveState([
+      funded,
+      downTwenty,
+      drawdownReviewAcknowledged('2026-02-01T10:00:00.000Z'),
+      // Back to a new peak of 1100, so the fall that follows is a new one.
+      deposit(300, '2026-03-01T09:00:00.000Z'),
+      withdrawal(300, '2026-04-01T09:00:00.000Z'),
+    ]);
+
+    expect(state).toMatchObject({ peakBalance: 1100, balance: 800 });
+    expect(state.drawdownReviewDue).toBe(true);
+  });
+
+  it('does not re-arm on a recovery that stayed inside the tripwire', () => {
+    const state = deriveState([
+      funded,
+      withdrawal(250, '2026-02-01T09:00:00.000Z'),
+      drawdownReviewAcknowledged('2026-02-01T10:00:00.000Z'),
+      // 750 up to 800 and back down: never inside the threshold, so this is
+      // the same fall the trader already reviewed.
+      deposit(50, '2026-03-01T09:00:00.000Z'),
+      withdrawal(50, '2026-04-01T09:00:00.000Z'),
+    ]);
+
+    expect(state).toMatchObject({ peakBalance: 1000, balance: 750, drawdownReviewDue: false });
+  });
+});
+
+describe('the base, on an account already under water', () => {
+  const funded = deposit(1000, '2026-01-01T09:00:00.000Z');
+  const openedAt = '2026-01-03T09:00:00.000Z';
+  // The standard long taken to 60: 5 units at a Balance of 1000, so -$200.
+  const lostHalf = [
+    planCreated({ at: '2026-01-02T09:00:00.000Z' }),
+    positionOpened(openedAt),
+    positionClosed({
+      at: '2026-01-04T09:00:00.000Z',
+      openedAt,
+      exitPrice: 60,
+      bestPrice: 100,
+      fees: 0,
+    }),
+  ];
+
+  it('falls by what the Withdrawal took and not by what the Trades lost', () => {
+    const state = deriveState([funded, ...lostHalf, withdrawal(10, '2026-02-01T09:00:00.000Z')]);
+
+    expect(state.balance).toBe(790);
+    // Not 790. Reading the Balance as the new base would forgive the $200 the
+    // Trade lost, and a recovery back to 1000 would then read as profit — so
+    // the Withdrawal that followed would take the base out with nothing said.
+    expect(state.base).toBe(990);
+  });
+
+  it('still warns on the Withdrawal after the account has climbed back', () => {
+    const state = deriveState([
+      funded,
+      ...lostHalf,
+      withdrawal(10, '2026-02-01T09:00:00.000Z'),
+      deposit(110, '2026-03-01T09:00:00.000Z'),
+    ]);
+
+    // A Balance of 900 against a base of 1100: still under it, so a
+    // Withdrawal of any size is still coming out of the base.
+    expect(state).toMatchObject({ balance: 900, base: 1100 });
   });
 });

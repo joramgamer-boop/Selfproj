@@ -6,6 +6,11 @@ interface DepositFormProps {
   onRecord: (amount: number) => Promise<RecordResult>;
 }
 
+/**
+ * Money going in. Nothing judges a Deposit — feeding the base with real
+ * capital is the framework's own advice — so this is the plain form, and its
+ * sibling that takes money back out is the one with something to say.
+ */
 export default function DepositForm({ onRecord }: DepositFormProps) {
   const [amount, setAmount] = useState('');
   // The core decides whether the amount is recordable; this only parses the
@@ -16,14 +21,14 @@ export default function DepositForm({ onRecord }: DepositFormProps) {
   );
 
   return (
-    <form className="deposit" onSubmit={onSubmit} noValidate>
-      <label className="deposit__label" htmlFor="deposit-amount">
+    <form className="cash" onSubmit={onSubmit} noValidate>
+      <label className="cash__label" htmlFor="deposit-amount">
         Deposit amount
       </label>
-      <div className="deposit__row">
+      <div className="cash__row">
         <input
           id="deposit-amount"
-          className="deposit__input"
+          className="cash__input"
           type="number"
           inputMode="decimal"
           step="any"
@@ -33,12 +38,12 @@ export default function DepositForm({ onRecord }: DepositFormProps) {
         />
         {/* One tap, one Deposit: a second tap while the first is still saving
             would size off a Balance the Ledger has not caught up with. */}
-        <button className="deposit__submit" type="submit" disabled={saving}>
+        <button className="cash__submit" type="submit" disabled={saving}>
           Record Deposit
         </button>
       </div>
       {rejection && (
-        <p className="deposit__rejection" role="alert">
+        <p className="cash__rejection" role="alert">
           {rejection}
         </p>
       )}

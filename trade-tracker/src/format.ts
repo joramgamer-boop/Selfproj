@@ -1,3 +1,4 @@
+import { drawdownPercent } from './core/account';
 import type { AbandonReason, Direction } from './core/plan';
 import { riskPercentOf } from './core/risk';
 
@@ -45,6 +46,15 @@ const abandonReasons: Record<AbandonReason, string> = {
  */
 export function formatAbandonReason(reason: AbandonReason): string {
   return abandonReasons[reason];
+}
+
+/**
+ * Drawdown as the account screen says it: a percentage of Peak Balance, to one
+ * decimal. The tenth matters — the difference between 19.9% and 20.0% is the
+ * difference between planning a trade and reading the log first.
+ */
+export function formatDrawdown(fraction: number): string {
+  return `${drawdownPercent(fraction).toFixed(1)}%`;
 }
 
 /** Risk as the Plan screen says it: a percentage of Balance, to one decimal. */
