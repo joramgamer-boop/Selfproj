@@ -8,6 +8,7 @@ import type {
   StopMoved,
   TradeTrackerEvent,
 } from './events';
+import { isBackupDue } from './export';
 import { toCents } from './money';
 import type { AbandonReason, PlanInputs } from './plan';
 import { DEFAULT_RISK_FRACTION } from './risk';
@@ -170,6 +171,24 @@ export interface DerivedState {
    */
   readonly openPositions: readonly Position[];
   readonly trades: readonly Trade[];
+  /**
+   * How many Trades have closed since the log was last copied off this device.
+   * What the nag counts and what the Rule that blocks new Plans reads.
+   *
+   * Only a Backup clears it, never a CSV export. A CSV holds a reading of the
+   * Trades and neither the events nor the Evidence, so a phone lost the day
+   * after one is a phone that lost the log — and a Rule that exists because
+   * browser storage is deletable must not be answerable by a file that cannot
+   * put the log back.
+   */
+  readonly tradesSinceBackup: number;
+  /**
+   * True once enough Trades have gone unbacked to stop new Plans. Folded here
+   * beside `drawdownReviewDue`, and for the same reason: the Rule that blocks
+   * and the panel that nags both read this one answer, so neither can come to
+   * disagree with the other about when a Backup is due.
+   */
+  readonly backupDue: boolean;
   /** The Risk a Plan uses unless it says otherwise, as a share of Balance. */
   readonly riskDefault: number;
 }
@@ -184,6 +203,8 @@ export const emptyState: DerivedState = {
   plans: [],
   openPositions: [],
   trades: [],
+  tradesSinceBackup: 0,
+  backupDue: false,
   riskDefault: DEFAULT_RISK_FRACTION,
 };
 
@@ -219,6 +240,10 @@ export function deriveState(events: readonly TradeTrackerEvent[]): DerivedState 
   // Whether the tripwire has been answered since it last fired. Reset below
   // rather than cleared by hand, so re-arming is a property of the fold.
   let reviewed = false;
+  // Counted up by every close and put back to zero by every copy of the log
+  // that could actually put it back. Folded rather than stored, so the nag and
+  // the Rule cannot disagree with the log they are both read from.
+  let tradesSinceBackup = 0;
   let riskDefault = DEFAULT_RISK_FRACTION;
 
   /**
@@ -372,6 +397,7 @@ export function deriveState(events: readonly TradeTrackerEvent[]): DerivedState 
         }
         record.status = 'closed';
         open.delete(event.planId);
+        tradesSinceBackup += 1;
 
         // The same arithmetic and only the arithmetic, for the same reason the
         // Plan above is not re-adjudicated: this Trade already happened.
@@ -438,6 +464,17 @@ export function deriveState(events: readonly TradeTrackerEvent[]): DerivedState 
         evidence.delete(event.planId);
         break;
       }
+      case 'Exported':
+        // Only the format that can put the log back. A CSV is a reading of the
+        // Trades — no events, no Evidence — so counting it here would let the
+        // Rule be answered by a file that cannot restore anything.
+        if (event.format === 'json') tradesSinceBackup = 0;
+        break;
+      case 'Restored':
+        // The Backup this log was read out of is a copy of it, sitting
+        // wherever the trader keeps their files. Nothing has closed since.
+        tradesSinceBackup = 0;
+        break;
       case 'RiskDefaultChanged':
         riskDefault = event.riskFraction;
         break;
@@ -467,6 +504,8 @@ export function deriveState(events: readonly TradeTrackerEvent[]): DerivedState 
       ...trade,
       evidenceId: evidence.get(trade.plan.id) ?? null,
     })),
+    tradesSinceBackup,
+    backupDue: isBackupDue(tradesSinceBackup),
     riskDefault,
   };
 }
@@ -480,6 +519,19 @@ export function deriveState(events: readonly TradeTrackerEvent[]): DerivedState 
  */
 export function plansAwaitingADecision(state: DerivedState): readonly Plan[] {
   return state.plans.filter((plan) => plan.status === 'planned');
+}
+
+/**
+ * Whether this device holds nothing worth keeping: no Plan of any kind, and
+ * not one row in the Ledger.
+ *
+ * It is the question restoring a Backup turns on. The log is append-only, so a
+ * restore is an append — and appending one history onto another leaves neither
+ * readable. A device that has only ever been opened, or only ever exported,
+ * has nothing for the Backup to write over.
+ */
+export function isUnusedLog(state: DerivedState): boolean {
+  return state.plans.length === 0 && state.ledger.length === 0;
 }
 
 /**

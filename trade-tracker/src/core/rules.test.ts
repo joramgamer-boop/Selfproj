@@ -12,6 +12,7 @@ import { deriveState } from './state';
 import {
   deposit,
   drawdownReviewAcknowledged,
+  exported,
   planCreated,
   positionClosed,
   positionOpened,
@@ -537,5 +538,101 @@ describe('the Rules about a Withdrawal', () => {
       outcome: 'append',
       events: [{ type: 'Deposit' }],
     });
+  });
+});
+
+describe('the Backup Rule', () => {
+  const openedAt = '2026-01-03T09:00:00.000Z';
+  const backed = deposit(5000, '2026-01-01T09:00:00.000Z');
+
+  /** `count` closed Trades, each on a Plan of its own. */
+  const trades = (count: number, run = 'a') =>
+    Array.from({ length: count }, (_, index) => `${run}${index + 1}`).flatMap((id) => [
+      planCreated({ at: '2026-02-01T09:00:00.000Z', id }),
+      positionOpened(openedAt, id),
+      positionClosed({ at: '2026-02-01T15:00:00.000Z', openedAt, planId: id }),
+    ]);
+
+  it('lets a Plan through while fewer than ten Trades have gone unbacked', () => {
+    expect(evaluate(deriveState([backed, ...trades(9)]), aLong, context())).toMatchObject({
+      outcome: 'append',
+    });
+  });
+
+  it('blocks a new Plan at ten Trades since the last Backup', () => {
+    expect(evaluate(deriveState([backed, ...trades(10)]), aLong, context())).toMatchObject({
+      outcome: 'blocked',
+      verdicts: [{ ruleId: 'back-up-the-log' }],
+    });
+  });
+
+  it('says how many Trades are at stake, so the block is arguable', () => {
+    expect(evaluate(deriveState([backed, ...trades(11)]), aLong, context())).toMatchObject({
+      verdicts: [{ explanation: expect.stringContaining('11') }],
+    });
+  });
+
+  it('clears once a Backup is taken', () => {
+    const backedUp = deriveState([backed, ...trades(10), exported('2026-03-01T09:00:00.000Z')]);
+
+    expect(evaluate(backedUp, aLong, context())).toMatchObject({ outcome: 'append' });
+  });
+
+  it('stays up on a CSV export, which cannot put the log back', () => {
+    const csvOnly = deriveState([
+      backed,
+      ...trades(10),
+      exported('2026-03-01T09:00:00.000Z', 'csv'),
+    ]);
+
+    expect(evaluate(csvOnly, aLong, context())).toMatchObject({
+      outcome: 'blocked',
+      verdicts: [{ ruleId: 'back-up-the-log' }],
+    });
+  });
+
+  it('blocks again once ten more Trades have closed since that Backup', () => {
+    const drifted = deriveState([
+      backed,
+      ...trades(10),
+      exported('2026-03-01T09:00:00.000Z'),
+      ...trades(10, 'b'),
+    ]);
+
+    expect(evaluate(drifted, aLong, context())).toMatchObject({
+      outcome: 'blocked',
+      verdicts: [{ ruleId: 'back-up-the-log' }],
+    });
+  });
+
+  it('leaves a way through by typing a reason, and records the Violation', () => {
+    const insisted = evaluate(
+      deriveState([backed, ...trades(10)]),
+      { ...aLong, override: { reason: 'Backing up when I am off the phone.' } },
+      context(),
+    );
+
+    expect(insisted).toMatchObject({
+      outcome: 'append',
+      events: [
+        {
+          type: 'PlanCreated',
+          violations: [
+            { ruleId: 'back-up-the-log', reason: 'Backing up when I am off the phone.' },
+          ],
+        },
+      ],
+    });
+  });
+
+  it('says nothing about a Plan already sized — it was decided before the Backup came due', () => {
+    const overdue = deriveState([
+      backed,
+      ...trades(10),
+      planCreated({ at: '2026-03-01T09:00:00.000Z', id: 'plan-99' }),
+    ]);
+    const open: OpenPosition = { type: 'OpenPosition', planId: 'plan-99' };
+
+    expect(evaluate(overdue, open, context())).toMatchObject({ outcome: 'append' });
   });
 });

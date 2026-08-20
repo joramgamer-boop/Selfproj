@@ -210,3 +210,31 @@ power is that nothing happens off the record, not that it can stop you.
 A screenshot attached to a Trade as proof of the fill. Stored, displayed, and
 **never read by the app** — it does not contain the Stop or the Best Price, so it
 cannot be a source of logged data.
+
+## Durability
+
+### Export
+
+Taking a copy of something out of the app, as a file. There are two, and they
+are not two spellings of one thing: an **Export** of the closed Trades as CSV,
+and a **Backup**. Both are recorded in the log; only one of them is a Backup.
+
+Not "download" — what the browser does with the file is the browser's business.
+
+### Backup
+
+The whole event log as one JSON file, with the Evidence inside it. The only
+copy the app can Restore from, and the only one that answers the Rule blocking
+new Plans after 10 Trades (ADR-0004).
+
+Not "the export" when precision matters, and never a CSV: a CSV holds a reading
+of the Trades, no events, no skipped Plans and no screenshots.
+
+### Restore
+
+Reading a Backup back in and installing the log it carries. Offered only on a
+device with nothing recorded on it — the log is append-only, so a Restore is an
+append, and appending one history onto another leaves neither readable.
+
+Recorded as an event, like everything else. Not "import", not "sync" — nothing
+here ever leaves the phone.

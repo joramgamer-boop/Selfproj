@@ -20,6 +20,12 @@ export type RecordResult =
 export interface TradeTracker {
   readonly status: 'loading' | 'ready';
   readonly state: DerivedState;
+  /**
+   * The log itself, as against everything folded out of it. Exactly one thing
+   * needs the events rather than the figures — the Backup, which is a copy of
+   * the log and not a reading of it.
+   */
+  readonly log: readonly TradeTrackerEvent[];
   /** Evaluates the command in the core and, if it produced events, stores them. */
   record(command: Command): Promise<RecordResult>;
   /**
@@ -122,5 +128,5 @@ export function useTradeTracker(store: EventStore, context: CommandContext): Tra
 
   const openEvidence = useCallback((id: string) => store.readEvidence(id), [store]);
 
-  return { status, state, record, openEvidence };
+  return { status, state, log, record, openEvidence };
 }

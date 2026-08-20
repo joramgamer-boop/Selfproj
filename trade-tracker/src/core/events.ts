@@ -1,3 +1,4 @@
+import type { ExportFormat } from './export';
 import type { AbandonReason, PlanInputs } from './plan';
 import type { RuleId, Violation } from './rules';
 import type { ClosingRecord } from './trade';
@@ -170,6 +171,42 @@ export interface EvidenceRemoved {
   readonly planId: string;
 }
 
+/**
+ * A copy of the log taken out of the app — the CSV of closed Trades, or the
+ * Backup the whole thing can be restored from.
+ *
+ * It is an event rather than a stored timestamp for the usual reason: how many
+ * Trades have closed since the last Backup is then folded out of the log like
+ * every other figure, and the Rule that blocks new Plans reads that fold rather
+ * than a flag somebody has to remember to clear.
+ *
+ * The event names the format because only one of the two is a Backup. A CSV
+ * cannot be restored from — it holds no Evidence and no events, only a reading
+ * of the Trades — so it says the trader looked at their log, not that a copy of
+ * it exists anywhere.
+ */
+export interface Exported {
+  readonly type: 'Exported';
+  readonly at: string;
+  readonly format: ExportFormat;
+}
+
+/**
+ * A Backup read back in, and the log it carried installed on this device.
+ *
+ * On the record like everything else: a restore is the largest thing that can
+ * happen to a log, and one that left no trace would make the history read as
+ * though these Trades had always been here. It also answers the Backup Rule
+ * honestly — the file it came from is, by definition, a Backup of this log.
+ *
+ * Nothing else about it is stored. The restored events are the log, appended
+ * ahead of this one.
+ */
+export interface Restored {
+  readonly type: 'Restored';
+  readonly at: string;
+}
+
 export type TradeTrackerEvent =
   | Deposit
   | Withdrawal
@@ -181,6 +218,8 @@ export type TradeTrackerEvent =
   | PositionClosed
   | EvidenceAttached
   | EvidenceRemoved
+  | Exported
+  | Restored
   | RiskDefaultChanged;
 
 export type TradeTrackerEventType = TradeTrackerEvent['type'];

@@ -1,5 +1,6 @@
 import { DRAWDOWN_TRIPWIRE, drawdownPercent, hasDoubled } from './account';
 import type { Command } from './commands';
+import { UNBACKED_TRADE_LIMIT } from './export';
 import { isPrice, toCents } from './money';
 import type { DerivedState } from './state';
 
@@ -15,6 +16,7 @@ import type { DerivedState } from './state';
 export const RULE_IDS = [
   'stop-required',
   'drawdown-review',
+  'back-up-the-log',
   'liquidation-buffer',
   'one-position-at-a-time',
   'stop-never-widens',
@@ -132,6 +134,43 @@ const drawdownReview: Rule = {
       `You are ${drawdownPercent(state.drawdown).toFixed(1)}% down from a Peak Balance ` +
       `of $${state.peakBalance.toFixed(2)}. Read the log and confirm it, and this opens ` +
       'up on its own — the trade after a drawdown is the one the log has most to say about.'
+    );
+  },
+};
+
+/**
+ * Back the log up, or stop trading. At ten Trades since the last Backup, no
+ * new Plan until a copy of the log exists somewhere other than this phone.
+ *
+ * It is the only Rule not about the trade in front of the trader, and it is
+ * enforced the same way because the failure it guards against is worse than
+ * any single bad trade: browser storage is deletable, and a log that vanishes
+ * at Trade 40 takes the Expectancy, the Capture Rate and the whole reason for
+ * typing any of it in with it. Nagging alone would not do — a nag is exactly
+ * what gets ignored for the six weeks before the phone is lost.
+ *
+ * Overridable, like every block that has something to record. Backing up in
+ * the sixty seconds before an entry is a real cost, so the trader can say so
+ * and go — and the Violation says they did.
+ *
+ * A new Plan only, exactly as the tripwire is. A Plan already sized was
+ * decided before this came due, and blocking it here would strand it: the
+ * Trade it becomes is not the thing that goes unbacked, the log is.
+ */
+const backUpTheLog: Rule = {
+  id: 'back-up-the-log',
+  name: `Back up after ${UNBACKED_TRADE_LIMIT} Trades`,
+  timing: 'pre-fact',
+  overridable: true,
+  verdict: (state, command) => {
+    // Judged on the derived answer rather than on the count, so the Rule and
+    // the panel that nags cannot disagree about when a Backup is due.
+    if (command.type !== 'CreatePlan' || !state.backupDue) return null;
+
+    return (
+      `${state.tradesSinceBackup} Trades have closed since your last Backup, and they exist ` +
+      'nowhere but on this phone. Take one — it is a file and a few seconds — and this opens ' +
+      'up on its own.'
     );
   },
 };
@@ -280,6 +319,7 @@ const withdrawalWaitsForTheDouble: Rule = {
 export const RULES: readonly Rule[] = [
   stopRequired,
   drawdownReview,
+  backUpTheLog,
   liquidationBuffer,
   onePositionAtATime,
   stopNeverWidens,

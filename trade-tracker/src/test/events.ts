@@ -7,6 +7,7 @@ import type {
   StopMoved,
   TradeTrackerEvent,
 } from '../core/events';
+import type { ExportFormat } from '../core/export';
 import type { RuleId, Violation } from '../core/rules';
 
 /** Shared across all three seams so a stored event looks the same everywhere. */
@@ -128,4 +129,14 @@ export function screenshot(bytes: number[] = [137, 80, 78, 71], name = 'fill.png
 /** The bytes of a stored screenshot, for comparing one blob against another. */
 export async function bytesOf(image: Blob): Promise<Uint8Array> {
   return new Uint8Array(await image.arrayBuffer());
+}
+
+/** A copy of the log taken out of the app. Defaults to the one that is a Backup. */
+export function exported(at: string, format: ExportFormat = 'json'): TradeTrackerEvent {
+  return { type: 'Exported', at, format };
+}
+
+/** A Backup read back in, on the device it was installed on. */
+export function restored(at: string): TradeTrackerEvent {
+  return { type: 'Restored', at };
 }

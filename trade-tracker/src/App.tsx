@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import BackupPanel from './components/BackupPanel';
 import BalanceHeadline from './components/BalanceHeadline';
 import DepositForm from './components/DepositForm';
 import DrawdownTripwire from './components/DrawdownTripwire';
@@ -15,7 +16,9 @@ import { withdrawalWarnings } from './core/commands';
 import { tradeLog } from './core/log';
 import { plansAwaitingADecision } from './core/state';
 import type { IdSource } from './core/ids';
+import { createBackups } from './backups';
 import type { EvidenceActions } from './evidence';
+import type { Downloads } from './storage/downloads';
 import type { DurableStorage } from './storage/durability';
 import type { EventStore } from './storage/eventStore';
 import { useDurability } from './useDurability';
@@ -27,12 +30,18 @@ interface AppProps {
   clock: Clock;
   ids: IdSource;
   durableStorage: DurableStorage;
+  downloads: Downloads;
 }
 
-export default function App({ store, clock, ids, durableStorage }: AppProps) {
+export default function App({ store, clock, ids, durableStorage, downloads }: AppProps) {
   const context = useMemo(() => ({ clock, ids }), [clock, ids]);
-  const { status, state, record, openEvidence } = useTradeTracker(store, context);
+  const tracker = useTradeTracker(store, context);
+  const { status, state, record, openEvidence } = tracker;
   const durability = useDurability(durableStorage);
+  // Not memoised, and deliberately: it closes over the log as it stands this
+  // render, and a Backup taken from a stale one would be a Backup missing the
+  // last Trade.
+  const backups = createBackups(store, downloads, clock, tracker);
   // Derived where every other figure is: by folding the log, in the core.
   const log = useMemo(() => tradeLog(state), [state]);
   const waiting = useMemo(() => plansAwaitingADecision(state), [state]);
@@ -84,6 +93,14 @@ export default function App({ store, clock, ids, durableStorage }: AppProps) {
       )}
       <PlanSizer balance={state.balance} riskDefault={state.riskDefault} onCreate={record} />
       <PlanList plans={waiting} onOpen={record} onAbandon={record} />
+      {/* Above the log rather than under it. The log grows without limit, and
+          a count of unbacked Trades below it is one nobody scrolls to — while
+          the thing it is nagging about is the log itself. */}
+      <BackupPanel
+        tradesSinceBackup={state.tradesSinceBackup}
+        backupDue={state.backupDue}
+        backups={backups}
+      />
       {/* Beneath the Plans awaiting a decision, because it is what gets read
           rather than acted on — and above the account, because a review starts
           with the Trades and only then asks what they did to the Balance. */}

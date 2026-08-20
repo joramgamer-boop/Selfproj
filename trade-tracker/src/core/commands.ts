@@ -1,6 +1,7 @@
 import { isPastTripwire } from './account';
 import { isInstant, type Clock } from './clock';
 import type { TradeTrackerEvent } from './events';
+import type { ExportFormat } from './export';
 import type { IdSource } from './ids';
 import { isPrice, isRecordableAmount, toCents } from './money';
 import { isAbandonReason, type PlanInputs } from './plan';
@@ -8,7 +9,7 @@ import { isPlannableRiskFraction, roundRiskFraction } from './risk';
 import { blocks, warnings, type RuleVerdict, type Violation } from './rules';
 import { closeOut } from './settlement';
 import { sizeNewPlan } from './sizing';
-import type { DerivedState, Position, Trade } from './state';
+import { deriveState, isUnusedLog, type DerivedState, type Position, type Trade } from './state';
 import type { ProposedClose } from './trade';
 
 /**
@@ -117,6 +118,31 @@ export interface RemoveEvidence {
   readonly planId: string;
 }
 
+/**
+ * Writing down that a copy of the log has been handed over. Sent *after* the
+ * file exists rather than before it, for the same reason a Withdrawal is
+ * recorded after the money left: the point of the record is what happened, and
+ * an export that failed to save would otherwise clear the Backup Rule with a
+ * file nobody has.
+ */
+export interface RecordExport {
+  readonly type: 'RecordExport';
+  readonly format: ExportFormat;
+}
+
+/**
+ * A Backup read back in. The events are the log the file carried; whether they
+ * can be written here at all is decided below.
+ *
+ * It is a command rather than a store operation because restoring is an append
+ * like every other: the log the Backup holds goes in, and a Restored event
+ * goes in behind it saying where this log came from.
+ */
+export interface RestoreBackup {
+  readonly type: 'RestoreBackup';
+  readonly events: readonly TradeTrackerEvent[];
+}
+
 export interface SetRiskDefault {
   readonly type: 'SetRiskDefault';
   readonly riskFraction: number;
@@ -133,6 +159,8 @@ export type Command =
   | ClosePosition
   | AttachEvidence
   | RemoveEvidence
+  | RecordExport
+  | RestoreBackup
   | SetRiskDefault;
 
 /** A screenshot on its way to storage, under the id the events name it by. */
@@ -211,6 +239,10 @@ export function evaluate(
       return evaluateAttachEvidence(state, command, context);
     case 'RemoveEvidence':
       return evaluateRemoveEvidence(state, command, context);
+    case 'RecordExport':
+      return evaluateRecordExport(command, context);
+    case 'RestoreBackup':
+      return evaluateRestoreBackup(state, command, context);
     case 'SetRiskDefault':
       return evaluateSetRiskDefault(command, context);
   }
@@ -665,6 +697,84 @@ function evaluateRemoveEvidence(
     events: [{ type: 'EvidenceRemoved', at: clock.now().toISOString(), planId: command.planId }],
     discards: evidenceId,
   };
+}
+
+/**
+ * Writing down that the log has been copied off this device. No Rule judges it
+ * and none could: it is recorded after the file was handed over, and the one
+ * Rule that has anything to say about exporting is the one this clears.
+ */
+function evaluateRecordExport(command: RecordExport, { clock }: CommandContext): Evaluation {
+  return {
+    outcome: 'append',
+    events: [{ type: 'Exported', at: clock.now().toISOString(), format: command.format }],
+  };
+}
+
+/**
+ * Putting a Backup back. Two refusals, and both are about the one failure this
+ * app cannot recover from — a log it can no longer read.
+ *
+ * The first is the device: the log is append-only, so restoring onto one that
+ * already holds Plans and a Ledger would not replace anything, it would
+ * interleave two histories and leave both unreadable. Restoring is therefore
+ * something a fresh install does, and there is no way to say it more gently
+ * than refusing.
+ *
+ * The second is the file: these events are about to become the log, and a log
+ * that cannot be folded throws on every open with nothing to undo it. So it is
+ * folded here, before it is written, and a Backup that does not survive that is
+ * refused while the trader still has the file to go and check.
+ */
+function evaluateRestoreBackup(
+  state: DerivedState,
+  command: RestoreBackup,
+  { clock }: CommandContext,
+): Evaluation {
+  const refusal = whyNotRestorable(state, command.events);
+  if (refusal) return { outcome: 'rejected', reason: refusal };
+
+  return {
+    outcome: 'append',
+    // The restore behind the log it restored, so the fold meets the Trades
+    // before the event that says where they came from.
+    events: [...command.events, { type: 'Restored', at: clock.now().toISOString() }],
+  };
+}
+
+/**
+ * Why this Backup cannot be put on this device, or null when it can be.
+ *
+ * Exported because the answer is needed twice, and in that order: the app
+ * layer asks *before* it writes the Backup's screenshots to the store, and the
+ * command asks again before the events go in. Without the first ask, a restore
+ * refused here would already have written its screenshots — over the ones a
+ * Trade on this device was standing on.
+ */
+export function whyNotRestorable(
+  state: DerivedState,
+  events: readonly TradeTrackerEvent[],
+): string | null {
+  if (!isUnusedLog(state)) {
+    return (
+      'This device already holds a log. A Backup is restored into a fresh install, so ' +
+      'nothing recorded here is written over.'
+    );
+  }
+
+  if (events.length === 0) return 'That Backup has nothing in it to restore.';
+
+  try {
+    deriveState(events);
+  } catch (error) {
+    return `That file is not a log this app can read: ${messageOf(error)}`;
+  }
+
+  return null;
+}
+
+function messageOf(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 type Hold =

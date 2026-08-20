@@ -1193,3 +1193,90 @@
   border: none;
   border-bottom: 1px solid var(--edge);
 }
+
+/* Getting the log off the phone. Shaped like the account panels rather than
+   like the tripwire: it is on screen from the first Trade, and a border that
+   was always red would be one nobody sees by the time the block arrives. It
+   takes the alarm's colours only once new Plans are actually stopped. */
+.backup {
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+  padding: 0.875rem 1rem;
+  background: var(--panel);
+  border: 1px solid var(--edge);
+  border-radius: 0.75rem;
+}
+
+.backup--due {
+  border-color: var(--alarm);
+}
+
+.backup__heading {
+  margin: 0;
+  font-size: 0.75rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+
+.backup__count {
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+.backup--due .backup__count {
+  font-weight: 700;
+  color: var(--alarm);
+}
+
+.backup__why {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--ink-dim);
+}
+
+.backup__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.backup__take,
+.backup__csv {
+  flex: 1 1 10rem;
+  min-height: 3rem;
+  padding: 0.75rem 1rem;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--ink);
+  background: transparent;
+  border: 1px solid var(--edge);
+  border-radius: 0.5rem;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+/* The Backup leads, because it is the one of the two that can put the log
+   back. The CSV is a convenience beside it. */
+.backup__take {
+  border-color: var(--accent);
+}
+
+.backup__take:disabled,
+.backup__csv:disabled {
+  opacity: 0.6;
+}
+
+.backup__note {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--ink-dim);
+}
+
+.backup__rejection {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--alarm);
+}

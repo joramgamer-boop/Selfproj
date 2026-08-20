@@ -5,6 +5,7 @@ import { fixedClock } from './core/clock';
 import { sequentialIds } from './core/ids';
 import { createMemoryEventStore } from './storage/memoryEventStore';
 import type { EventStore } from './storage/eventStore';
+import type { Downloads, ExportFile } from './storage/downloads';
 import type { DurableStorage } from './storage/durability';
 import type { TradeTrackerEvent } from './core/events';
 import {
@@ -24,14 +25,35 @@ import { toDateTimeInput } from './format';
 const clock = fixedClock('2026-05-04T12:30:00.000Z');
 const durable: DurableStorage = { request: async () => 'durable' };
 
+/**
+ * A Downloads that keeps what it was handed. Saving a file is the browser's
+ * business and cannot be asserted on, so the tests watch the seam instead.
+ */
+function savesFiles(): Downloads & { readonly saved: ExportFile[] } {
+  const saved: ExportFile[] = [];
+  return {
+    saved,
+    save: async (file) => {
+      saved.push(file);
+    },
+  };
+}
+
 function renderApp(log: TradeTrackerEvent[] = [], evidence = new Map<string, Blob>()) {
   // The screenshots beside the log, so a test can ask what the store is
   // actually holding rather than what the screen claims it is.
   const store = createMemoryEventStore(log, evidence);
+  const downloads = savesFiles();
   const view = render(
-    <App store={store} clock={clock} ids={sequentialIds()} durableStorage={durable} />,
+    <App
+      store={store}
+      clock={clock}
+      ids={sequentialIds()}
+      durableStorage={durable}
+      downloads={downloads}
+    />,
   );
-  return { log, evidence, view };
+  return { log, evidence, downloads, store, view };
 }
 
 async function recordDeposit(amount: string) {
@@ -83,7 +105,7 @@ describe('the account screen', () => {
     await screen.findByRole('listitem');
 
     view.unmount();
-    render(<App store={createMemoryEventStore(log)} clock={clock} ids={sequentialIds()} durableStorage={durable} />);
+    render(<App store={createMemoryEventStore(log)} clock={clock} ids={sequentialIds()} durableStorage={durable} downloads={savesFiles()} />);
 
     expect(await screen.findByLabelText(/^balance$/i)).toHaveTextContent('$30.00');
     expect(screen.getByRole('listitem')).toHaveTextContent('Deposit');
@@ -113,7 +135,7 @@ describe('the account screen', () => {
         await inner.append(events);
       },
     };
-    render(<App store={slowStore} clock={clock} ids={sequentialIds()} durableStorage={durable} />);
+    render(<App store={slowStore} clock={clock} ids={sequentialIds()} durableStorage={durable} downloads={savesFiles()} />);
 
     const user = userEvent.setup();
     await user.type(await screen.findByLabelText(/deposit amount/i), '30');
@@ -144,6 +166,7 @@ describe('how durable the Ledger is', () => {
         clock={clock}
         ids={sequentialIds()}
         durableStorage={durableStorage}
+        downloads={savesFiles()}
       />,
     );
     return screen.findByLabelText(/storage durability/i);
@@ -189,6 +212,7 @@ describe('how durable the Ledger is', () => {
         clock={clock}
         ids={sequentialIds()}
         durableStorage={{ request: () => new Promise(() => {}) }}
+        downloads={savesFiles()}
       />,
     );
 
@@ -271,6 +295,7 @@ describe('sizing a Plan', () => {
         clock={clock}
         ids={sequentialIds()}
         durableStorage={durable}
+        downloads={savesFiles()}
       />,
     );
 
@@ -1204,6 +1229,7 @@ describe('Evidence — a screenshot as proof of the fill', () => {
         clock={clock}
         ids={sequentialIds()}
         durableStorage={durable}
+        downloads={savesFiles()}
       />,
     );
     await openTheDetail();
@@ -1239,5 +1265,131 @@ describe('Evidence — a screenshot as proof of the fill', () => {
     await waitFor(() => expect(log).toHaveLength(4));
     expect(await screen.findByLabelText(/^balance$/i)).toHaveTextContent('$524.00');
     expect(evidence.size).toBe(0);
+  });
+});
+
+describe('backing the log up, and getting it back', () => {
+  const openedAt = '2026-01-03T09:00:00.000Z';
+
+  /** `count` closed Trades, each on a Plan of its own. */
+  const closedTrades = (count: number) =>
+    Array.from({ length: count }, (_, index) => `plan-${index + 1}`).flatMap((id) => [
+      planCreated({ at: '2026-01-02T09:00:00.000Z', id }),
+      positionOpened(openedAt, id),
+      positionClosed({ at: '2026-01-04T09:00:00.000Z', openedAt, planId: id }),
+    ]);
+
+  const funded = deposit(5000, '2026-01-01T09:00:00.000Z');
+
+  it('always says how many Trades have closed since the last backup', async () => {
+    renderApp([funded, ...closedTrades(3)]);
+
+    expect(await screen.findByLabelText(/trades since the last backup/i)).toHaveTextContent(
+      '3 Trades since your last Backup',
+    );
+  });
+
+  it('hands over a CSV of the closed Trades', async () => {
+    const { downloads } = renderApp([funded, ...closedTrades(1)]);
+
+    await userEvent.setup().click(await screen.findByRole('button', { name: /export trades as csv/i }));
+
+    await waitFor(() => expect(downloads.saved).toHaveLength(1));
+    const [file] = downloads.saved;
+    expect(file.filename).toMatch(/\.csv$/);
+    expect(file.text).toContain('R-multiple');
+    expect(file.text).toContain('take-profit hit');
+  });
+
+  it('clears the count once a backup is taken', async () => {
+    const { downloads } = renderApp([funded, ...closedTrades(3)]);
+
+    await userEvent.setup().click(await screen.findByRole('button', { name: /back up everything/i }));
+
+    await waitFor(() => expect(downloads.saved).toHaveLength(1));
+    expect(downloads.saved[0].filename).toMatch(/\.json$/);
+    expect(await screen.findByLabelText(/trades since the last backup/i)).toHaveTextContent(
+      /nothing has closed since/i,
+    );
+  });
+
+  it('blocks a new Plan at ten Trades since the last backup, and opens up once one is taken', async () => {
+    const user = userEvent.setup();
+    renderApp([funded, ...closedTrades(10)]);
+
+    await user.type(await screen.findByLabelText(/entry price/i), '100');
+    await user.type(screen.getByLabelText(/^stop$/i), '96');
+    await user.type(screen.getByLabelText(/leverage/i), '5');
+    await user.type(screen.getByLabelText(/liquidation price/i), '80');
+    await user.click(screen.getByRole('button', { name: /create plan/i }));
+
+    expect(await screen.findByText(/back up after 10 trades/i)).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /back up everything/i }));
+    await user.click(screen.getByRole('button', { name: /create plan/i }));
+
+    expect(await screen.findByRole('button', { name: /open as position/i })).toBeInTheDocument();
+  });
+
+  it('restores a backup onto a fresh device, screenshots and all', async () => {
+    const user = userEvent.setup();
+    // A whole log: money in, a Trade closed with proof of the fill, and a Plan
+    // that was skipped. What is being tested is that every one of them comes
+    // back, not that a Deposit does.
+    const backed = renderApp(
+      [
+        deposit(500, '2026-01-01T09:00:00.000Z'),
+        planCreated({ at: '2026-01-02T09:00:00.000Z' }),
+        positionOpened(openedAt),
+        positionClosed({ at: '2026-01-04T09:00:00.000Z', openedAt }),
+        evidenceAttached({ at: '2026-01-04T09:05:00.000Z' }),
+        planCreated({ at: '2026-01-05T09:00:00.000Z', id: 'plan-2' }),
+        planAbandoned({ at: '2026-01-05T10:00:00.000Z', planId: 'plan-2' }),
+      ],
+      new Map([['shot-1', screenshot([1, 2, 3])]]),
+    );
+
+    await user.click(await screen.findByRole('button', { name: /back up everything/i }));
+    await waitFor(() => expect(backed.downloads.saved).toHaveLength(1));
+    const file = new File([backed.downloads.saved[0].text], 'backup.json', {
+      type: 'application/json',
+    });
+    // A device with a log on it is not offered the picker: restoring is an
+    // append, and appending one history onto another leaves neither readable.
+    expect(screen.queryByLabelText(/restore from a backup/i)).not.toBeInTheDocument();
+    backed.view.unmount();
+
+    const fresh = renderApp();
+    await user.upload(await screen.findByLabelText(/restore from a backup/i), file);
+
+    // Every derived figure, on a device that has never seen any of it.
+    expect(await screen.findByLabelText(/^balance$/i)).toHaveTextContent('$524.00');
+    expect(await screen.findByText('+2.40R')).toBeInTheDocument();
+    // The skip too: it moved no money, so a Backup is the only file it could
+    // ever have travelled in.
+    expect(screen.getByText(/abandoned — price ran away/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/trades since the last backup/i)).toHaveTextContent(
+      /nothing has closed since/i,
+    );
+
+    // And the screenshot, which is the part a CSV could never carry.
+    const stored = await fresh.store.readEvidence('shot-1');
+    expect(stored).not.toBeNull();
+    expect(await bytesOf(stored!)).toEqual(new Uint8Array([1, 2, 3]));
+  });
+
+  it('refuses a file that is not a backup, and records nothing', async () => {
+    const { log } = renderApp();
+
+    // Past the picker's own accept filter, which not every phone honours.
+    await userEvent
+      .setup({ applyAccept: false })
+      .upload(
+        await screen.findByLabelText(/restore from a backup/i),
+        new File(['Closed at,Direction'], 'trades.csv', { type: 'text/csv' }),
+      );
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/not a backup/i);
+    expect(log).toEqual([]);
   });
 });

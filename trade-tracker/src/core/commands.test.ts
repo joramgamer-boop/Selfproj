@@ -846,3 +846,103 @@ describe('closing a Position with a screenshot', () => {
     });
   });
 });
+
+describe('recording an export', () => {
+  it('produces an Exported event naming the format', () => {
+    const evaluation = evaluate(emptyState, { type: 'RecordExport', format: 'json' }, context());
+
+    expect(evaluation).toEqual({
+      outcome: 'append',
+      events: [{ type: 'Exported', at: '2026-05-04T12:30:00.000Z', format: 'json' }],
+    });
+  });
+
+  it('records a CSV export as the CSV it was', () => {
+    expect(evaluate(emptyState, { type: 'RecordExport', format: 'csv' }, context())).toMatchObject({
+      events: [{ type: 'Exported', format: 'csv' }],
+    });
+  });
+
+  it('is never blocked, because it is written down after the file has been handed over', () => {
+    // Ten unbacked Trades block a Plan. They must not block the one thing
+    // that clears them.
+    const overdue = deriveState([
+      deposit(5000, '2026-01-01T09:00:00.000Z'),
+      ...Array.from({ length: 10 }, (_, index) => `plan-${index + 1}`).flatMap((id) => [
+        planCreated({ at: '2026-02-01T09:00:00.000Z', id }),
+        positionOpened('2026-02-01T10:00:00.000Z', id),
+        positionClosed({
+          at: '2026-02-01T15:00:00.000Z',
+          openedAt: '2026-02-01T10:00:00.000Z',
+          planId: id,
+        }),
+      ]),
+    ]);
+
+    expect(evaluate(overdue, { type: 'RecordExport', format: 'json' }, context())).toMatchObject({
+      outcome: 'append',
+    });
+  });
+});
+
+describe('restoring a Backup', () => {
+  const backedUp = [
+    deposit(500, '2026-01-01T09:00:00.000Z'),
+    planCreated({ at: '2026-01-02T09:00:00.000Z' }),
+    positionOpened('2026-01-03T09:00:00.000Z'),
+    positionClosed({ at: '2026-01-04T09:00:00.000Z', openedAt: '2026-01-03T09:00:00.000Z' }),
+  ];
+
+  it('appends the whole log the Backup carried, and stamps the restore after it', () => {
+    const evaluation = evaluate(
+      emptyState,
+      { type: 'RestoreBackup', events: backedUp },
+      context(),
+    );
+
+    expect(evaluation).toEqual({
+      outcome: 'append',
+      events: [...backedUp, { type: 'Restored', at: '2026-05-04T12:30:00.000Z' }],
+    });
+  });
+
+  it('refuses onto a device that already holds a log, which appending would corrupt', () => {
+    const inUse = deriveState([deposit(500, '2026-01-01T09:00:00.000Z')]);
+
+    expect(evaluate(inUse, { type: 'RestoreBackup', events: backedUp }, context())).toEqual({
+      outcome: 'rejected',
+      reason: expect.stringMatching(/already holds a log/i),
+    });
+  });
+
+  it('restores onto a device that has only ever exported, because there is nothing there to lose', () => {
+    const untouched = deriveState([{ type: 'Exported', at: '2026-04-01T09:00:00.000Z', format: 'csv' }]);
+
+    expect(
+      evaluate(untouched, { type: 'RestoreBackup', events: backedUp }, context()),
+    ).toMatchObject({ outcome: 'append' });
+  });
+
+  it('refuses a Backup carrying nothing, which would record a restore of no log at all', () => {
+    expect(evaluate(emptyState, { type: 'RestoreBackup', events: [] }, context())).toEqual({
+      outcome: 'rejected',
+      reason: expect.stringMatching(/nothing in it|empty/i),
+    });
+  });
+
+  it('refuses a log that cannot be folded, rather than writing one the app could never open', () => {
+    // A close with no Position under it. Stored, it would throw on every open
+    // — and there is no way back out of an append-only log.
+    const contradictory = [
+      deposit(500, '2026-01-01T09:00:00.000Z'),
+      positionClosed({ at: '2026-01-04T09:00:00.000Z' }),
+    ];
+
+    expect(
+      evaluate(emptyState, { type: 'RestoreBackup', events: contradictory }, context()),
+    ).toMatchObject({
+      outcome: 'rejected',
+      reason: expect.stringMatching(/not a log this app can read/i),
+    });
+  });
+});

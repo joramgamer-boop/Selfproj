@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { EvidenceActions } from '../evidence';
 import type { RecordResult } from '../useTradeTracker';
 import { useEvidenceImage } from '../useEvidenceImage';
-import ScreenshotPicker from './ScreenshotPicker';
+import FilePicker from './FilePicker';
 
 interface EvidenceProps {
   /** The Trade this is proof of, by the Plan it was sized as. */
@@ -47,8 +47,9 @@ export default function Evidence({ planId, evidenceId, evidence }: EvidenceProps
       <p className="detail__label">Evidence</p>
       {evidenceId === null ? (
         <>
-          <ScreenshotPicker
+          <FilePicker
             id={`attach-${planId}`}
+            accept="image/*"
             label="Attach a screenshot"
             disabled={busy}
             onPick={pick}
@@ -81,8 +82,9 @@ export default function Evidence({ planId, evidenceId, evidence }: EvidenceProps
             </button>
           )}
           <div className="evidence__actions">
-            <ScreenshotPicker
+            <FilePicker
               id={`replace-${planId}`}
+              accept="image/*"
               label="Replace the screenshot"
               disabled={busy}
               onPick={pick}

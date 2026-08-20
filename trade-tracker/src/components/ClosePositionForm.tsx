@@ -7,7 +7,7 @@ import { formatExitReason, fromDateTimeInput, toDateTimeInput } from '../format'
 import type { RecordResult } from '../useTradeTracker';
 import { useSubmission } from '../useSubmission';
 import Field from './Field';
-import ScreenshotPicker from './ScreenshotPicker';
+import FilePicker from './FilePicker';
 
 interface ClosePositionFormProps {
   position: Position;
@@ -201,8 +201,9 @@ export default function ClosePositionForm({ position, clock, onClose }: ClosePos
       {/* Optional, and said so: a screenshot is proof of the fill and never a
           source of one, so a Position is never held open for want of a
           picture (ADR-0003). */}
-      <ScreenshotPicker
+      <FilePicker
         id="close-evidence"
+        accept="image/*"
         label="Screenshot (optional)"
         onPick={(image) => {
           setEvidence(image);

@@ -4,10 +4,12 @@ import {
   drawdownReviewAcknowledged,
   evidenceAttached,
   evidenceRemoved,
+  exported,
   planAbandoned,
   planCreated,
   positionClosed,
   positionOpened,
+  restored,
   riskDefaultChanged,
   stopMoved,
   withdrawal,
@@ -981,5 +983,110 @@ describe('Evidence on a Trade', () => {
     ];
 
     expect(() => deriveState(events)).toThrow(/has not closed/i);
+  });
+});
+
+describe('Trades since the last Backup', () => {
+  const openedAt = '2026-01-03T09:00:00.000Z';
+
+  /** One closed Trade, on a Plan of its own so the fold has no quarrel with it. */
+  const trade = (n: number) => [
+    planCreated({ at: `2026-02-0${n}T09:00:00.000Z`, id: `plan-${n}` }),
+    positionOpened(openedAt, `plan-${n}`),
+    positionClosed({ at: `2026-02-0${n}T15:00:00.000Z`, openedAt, planId: `plan-${n}` }),
+  ];
+
+  const funded = deposit(500, '2026-01-01T09:00:00.000Z');
+
+  it('is zero on an empty log', () => {
+    expect(deriveState([]).tradesSinceBackup).toBe(0);
+  });
+
+  it('counts every Trade that has closed', () => {
+    expect(deriveState([funded, ...trade(1), ...trade(2)]).tradesSinceBackup).toBe(2);
+  });
+
+  it('counts nothing but Trades — a skipped Plan is not a Trade', () => {
+    const state = deriveState([
+      funded,
+      ...trade(1),
+      planCreated({ at: '2026-03-01T09:00:00.000Z', id: 'plan-9' }),
+      planAbandoned({ at: '2026-03-01T10:00:00.000Z', planId: 'plan-9' }),
+      withdrawal(10, '2026-03-02T09:00:00.000Z'),
+    ]);
+
+    expect(state.tradesSinceBackup).toBe(1);
+  });
+
+  it('goes back to zero when a Backup is taken', () => {
+    const state = deriveState([
+      funded,
+      ...trade(1),
+      ...trade(2),
+      exported('2026-02-03T09:00:00.000Z'),
+    ]);
+
+    expect(state.tradesSinceBackup).toBe(0);
+  });
+
+  it('counts again from the Backup', () => {
+    const state = deriveState([
+      funded,
+      ...trade(1),
+      exported('2026-02-02T09:00:00.000Z'),
+      ...trade(3),
+    ]);
+
+    expect(state.tradesSinceBackup).toBe(1);
+  });
+
+  it('is untouched by a CSV export, which is a reading of the log and not a copy of it', () => {
+    const state = deriveState([
+      funded,
+      ...trade(1),
+      ...trade(2),
+      exported('2026-02-03T09:00:00.000Z', 'csv'),
+    ]);
+
+    expect(state.tradesSinceBackup).toBe(2);
+  });
+
+  it('goes back to zero when a Backup is restored — the file it came from is one', () => {
+    const state = deriveState([funded, ...trade(1), ...trade(2), restored('2026-02-03T09:00:00.000Z')]);
+
+    expect(state.tradesSinceBackup).toBe(0);
+  });
+
+  it('moves no money and adds no Ledger row — an export is not an account event', () => {
+    const state = deriveState([funded, exported('2026-02-03T09:00:00.000Z')]);
+
+    expect(state.balance).toBe(500);
+    expect(state.ledger).toHaveLength(1);
+  });
+});
+
+describe('when a Backup is due', () => {
+  const openedAt = '2026-01-03T09:00:00.000Z';
+  const trades = (count: number) =>
+    Array.from({ length: count }, (_, index) => `plan-${index + 1}`).flatMap((id) => [
+      planCreated({ at: '2026-02-01T09:00:00.000Z', id }),
+      positionOpened(openedAt, id),
+      positionClosed({ at: '2026-02-01T15:00:00.000Z', openedAt, planId: id }),
+    ]);
+
+  const funded = deposit(5000, '2026-01-01T09:00:00.000Z');
+
+  it('is not due while fewer than ten Trades have gone unbacked', () => {
+    expect(deriveState([funded, ...trades(9)]).backupDue).toBe(false);
+  });
+
+  it('is due at the tenth', () => {
+    expect(deriveState([funded, ...trades(10)]).backupDue).toBe(true);
+  });
+
+  it('is not due again until ten more have closed', () => {
+    const state = deriveState([funded, ...trades(10), exported('2026-03-01T09:00:00.000Z')]);
+
+    expect(state).toMatchObject({ backupDue: false, tradesSinceBackup: 0 });
   });
 });
