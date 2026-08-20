@@ -1065,3 +1065,131 @@
   margin: 0;
   font-size: 0.875rem;
 }
+
+/* Evidence — the screenshot, on the Trade it is proof of. Shown and stored,
+   never read (ADR-0003). */
+.evidence {
+  margin-top: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.evidence__note,
+.evidence__missing {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--ink-dim);
+}
+
+/* The picture is the button: on a phone, the thing you reach for to see a
+   screenshot properly is the screenshot. */
+.evidence__thumb {
+  padding: 0;
+  background: none;
+  border: 1px solid var(--edge);
+  border-radius: 0.5rem;
+  overflow: hidden;
+  cursor: pointer;
+  line-height: 0;
+}
+
+.evidence__image {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 14rem;
+  object-fit: cover;
+  object-position: top;
+}
+
+.evidence__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.evidence__remove {
+  min-height: 2.5rem;
+  padding: 0 0.75rem;
+  font-size: 0.8125rem;
+  color: var(--alarm);
+  background: none;
+  border: 1px solid var(--edge);
+  border-radius: 0.5rem;
+}
+
+.evidence__rejection {
+  margin: 0;
+  color: var(--alarm);
+  font-size: 0.875rem;
+}
+
+.picker {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.picker__label {
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+
+.picker__input {
+  font-size: 0.8125rem;
+  color: var(--ink-dim);
+}
+
+/* Full size, because the point of a fill screenshot is reading the numbers on
+   it. Over everything, and scrollable: an exchange screen is taller than a
+   phone and shrinking it to fit would defeat the whole exercise. */
+.viewer {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  background: var(--ground);
+  display: flex;
+  flex-direction: column;
+  padding: calc(0.75rem + env(safe-area-inset-top)) calc(0.75rem + env(safe-area-inset-right))
+    calc(0.75rem + env(safe-area-inset-bottom)) calc(0.75rem + env(safe-area-inset-left));
+  gap: 0.75rem;
+}
+
+.viewer__close {
+  align-self: flex-end;
+  min-height: 3rem;
+  padding: 0 1.25rem;
+  font-size: 1rem;
+  color: var(--ink);
+  background: var(--panel);
+  border: 1px solid var(--edge);
+  border-radius: 0.5rem;
+}
+
+.viewer__frame {
+  flex: 1;
+  overflow: auto;
+}
+
+.viewer__image {
+  display: block;
+  /* Its own pixels, not the column's: shrinking it to the phone's width is
+     what the thumbnail already did. */
+  max-width: none;
+}
+
+/* Dropping a picked screenshot before the close is sent. Sits inside the note
+   that names the file, so the way out is beside the thing to get out of. */
+.close__unpick {
+  padding: 0;
+  font-size: 0.75rem;
+  color: var(--ink-dim);
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--edge);
+}

@@ -11,13 +11,17 @@ export const randomIds: IdSource = {
   next: () => crypto.randomUUID(),
 };
 
-/** Test helper: ids that count up, so an assertion can name one. */
-export function sequentialIds(): IdSource {
+/**
+ * Test helper: ids that count up, so an assertion can name one. The prefix is
+ * the test's to choose — one source stamps Plans and Evidence alike, and
+ * `shot-1` beside `plan-1` says which of the two a test is looking at.
+ */
+export function sequentialIds(prefix = 'plan'): IdSource {
   let issued = 0;
   return {
     next: () => {
       issued += 1;
-      return `plan-${issued}`;
+      return `${prefix}-${issued}`;
     },
   };
 }

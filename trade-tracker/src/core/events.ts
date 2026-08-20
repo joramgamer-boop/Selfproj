@@ -137,6 +137,39 @@ export interface PositionClosed extends ClosingRecord {
   readonly closedAt: string;
 }
 
+/**
+ * A screenshot of the exchange's closed-position screen, attached to a Trade
+ * as proof of the fill. Attaching another replaces it — the log keeps both
+ * rows, and the Trade shows the latest.
+ *
+ * The image itself is not in here. A screenshot is hundreds of kilobytes and
+ * the log is read whole on every open, so the event names the blob and the
+ * store holds it. What the event deliberately does *not* carry is anything
+ * taken out of the image: no figure on the Trade comes from it, ever
+ * (ADR-0003) — the screenshot holds neither the Stop nor the Best Price, so
+ * reading it would capture the noise and silently drop both figures that
+ * define 1R and Capture Rate.
+ */
+export interface EvidenceAttached {
+  readonly type: 'EvidenceAttached';
+  readonly at: string;
+  /** The Trade it is proof of, named by the Plan it was sized as. */
+  readonly planId: string;
+  /** Names the image in the store. Never the image, and never anything in it. */
+  readonly evidenceId: string;
+}
+
+/**
+ * The screenshot taken off a Trade. An event rather than an erasure, because
+ * the log is append-only: the Trade stops showing one, and the fact that there
+ * was one stays on the record.
+ */
+export interface EvidenceRemoved {
+  readonly type: 'EvidenceRemoved';
+  readonly at: string;
+  readonly planId: string;
+}
+
 export type TradeTrackerEvent =
   | Deposit
   | Withdrawal
@@ -146,6 +179,8 @@ export type TradeTrackerEvent =
   | PositionOpened
   | StopMoved
   | PositionClosed
+  | EvidenceAttached
+  | EvidenceRemoved
   | RiskDefaultChanged;
 
 export type TradeTrackerEventType = TradeTrackerEvent['type'];

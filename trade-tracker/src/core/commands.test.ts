@@ -7,10 +7,12 @@ import { sequentialIds } from './ids';
 import {
   deposit,
   drawdownReviewAcknowledged,
+  evidenceAttached,
   planAbandoned,
   planCreated,
   positionClosed,
   positionOpened,
+  screenshot,
   stopMoved,
   withdrawal,
 } from '../test/events';
@@ -696,6 +698,151 @@ describe('previewing what the Rules make of a Withdrawal', () => {
     expect(previewed).not.toHaveLength(0);
     expect(evaluate(funded, { type: 'RecordWithdrawal', amount: 12.005 }, context())).toMatchObject({
       events: [{ amount: 12.01, warnings: previewed }],
+    });
+  });
+});
+
+/**
+ * The same context, with ids that read as screenshots. One source stamps both
+ * in the app; here the prefix keeps an Evidence id from looking like a Plan's.
+ */
+const evidenceContext = () => ({ clock, ids: sequentialIds('shot') });
+
+describe('attaching Evidence to a Trade', () => {
+  const image = screenshot();
+
+  it('produces an EvidenceAttached naming an id, and hands over the image to store', () => {
+    const evaluation = evaluate(settled, { type: 'AttachEvidence', planId: 'plan-1', image }, evidenceContext());
+
+    expect(evaluation).toEqual({
+      outcome: 'append',
+      events: [
+        {
+          type: 'EvidenceAttached',
+          at: '2026-05-04T12:30:00.000Z',
+          planId: 'plan-1',
+          evidenceId: 'shot-1',
+        },
+      ],
+      attaches: { id: 'shot-1', image },
+    });
+  });
+
+  it('puts the screenshot on the Trade once the event is folded back in', () => {
+    const evaluation = evaluate(settled, { type: 'AttachEvidence', planId: 'plan-1', image }, evidenceContext());
+
+    if (evaluation.outcome !== 'append') throw new Error('expected the screenshot to be attachable');
+    const state = deriveState([
+      funded,
+      planned,
+      positionOpened(openedAt),
+      positionClosed({ at: '2026-01-03T15:00:00.000Z', openedAt }),
+      ...evaluation.events,
+    ]);
+    expect(state.trades[0].evidenceId).toBe('shot-1');
+  });
+
+  it('gives up the screenshot it replaces, so nothing keeps paying for it', () => {
+    const replaced = deriveState([
+      funded,
+      planned,
+      positionOpened(openedAt),
+      positionClosed({ at: '2026-01-03T15:00:00.000Z', openedAt }),
+      evidenceAttached({ at: '2026-01-03T16:00:00.000Z', evidenceId: 'shot-1' }),
+    ]);
+
+    expect(evaluate(replaced, { type: 'AttachEvidence', planId: 'plan-1', image }, evidenceContext())).toMatchObject({
+      outcome: 'append',
+      discards: 'shot-1',
+    });
+  });
+
+  it('is rejected on a Plan that has not closed — Evidence is proof of a fill', () => {
+    expect(evaluate(live, { type: 'AttachEvidence', planId: 'plan-1', image }, evidenceContext())).toEqual({
+      outcome: 'rejected',
+      reason: expect.stringMatching(/has not closed/i),
+    });
+  });
+
+  it('is rejected when the file is not an image', () => {
+    const notAnImage = new Blob(['exit 110, fees 1'], { type: 'text/plain' });
+
+    expect(
+      evaluate(settled, { type: 'AttachEvidence', planId: 'plan-1', image: notAnImage }, evidenceContext()),
+    ).toEqual({ outcome: 'rejected', reason: expect.stringMatching(/not an image/i) });
+  });
+});
+
+describe('taking Evidence back off a Trade', () => {
+  const withEvidence = deriveState([
+    funded,
+    planned,
+    positionOpened(openedAt),
+    positionClosed({ at: '2026-01-03T15:00:00.000Z', openedAt }),
+    evidenceAttached({ at: '2026-01-03T16:00:00.000Z', evidenceId: 'shot-1' }),
+  ]);
+
+  it('produces an EvidenceRemoved and gives up the screenshot', () => {
+    expect(evaluate(withEvidence, { type: 'RemoveEvidence', planId: 'plan-1' }, evidenceContext())).toEqual({
+      outcome: 'append',
+      events: [{ type: 'EvidenceRemoved', at: '2026-05-04T12:30:00.000Z', planId: 'plan-1' }],
+      discards: 'shot-1',
+    });
+  });
+
+  it('leaves the Trade showing none once the event is folded back in', () => {
+    const evaluation = evaluate(withEvidence, { type: 'RemoveEvidence', planId: 'plan-1' }, evidenceContext());
+
+    if (evaluation.outcome !== 'append') throw new Error('expected the screenshot to be removable');
+    const state = deriveState([
+      funded,
+      planned,
+      positionOpened(openedAt),
+      positionClosed({ at: '2026-01-03T15:00:00.000Z', openedAt }),
+      evidenceAttached({ at: '2026-01-03T16:00:00.000Z', evidenceId: 'shot-1' }),
+      ...evaluation.events,
+    ]);
+    expect(state.trades[0].evidenceId).toBeNull();
+  });
+
+  it('is rejected on a Trade that has no screenshot', () => {
+    expect(evaluate(settled, { type: 'RemoveEvidence', planId: 'plan-1' }, evidenceContext())).toEqual({
+      outcome: 'rejected',
+      reason: expect.stringMatching(/no screenshot/i),
+    });
+  });
+});
+
+describe('closing a Position with a screenshot', () => {
+  const image = screenshot();
+
+  it('records the close and the screenshot as one batch', () => {
+    const evaluation = evaluate(live, { ...aClose, evidence: image }, evidenceContext());
+
+    expect(evaluation).toMatchObject({
+      outcome: 'append',
+      events: [
+        { type: 'PositionClosed', planId: 'plan-1' },
+        { type: 'EvidenceAttached', planId: 'plan-1', evidenceId: 'shot-1' },
+      ],
+      attaches: { id: 'shot-1', image },
+    });
+  });
+
+  it('closes without one, because a missing screenshot is not a reason to keep a Position open', () => {
+    const evaluation = evaluate(live, { ...aClose, evidence: null }, evidenceContext());
+
+    expect(evaluation).toMatchObject({ outcome: 'append', events: [{ type: 'PositionClosed' }] });
+    if (evaluation.outcome !== 'append') throw new Error('expected the close to be recordable');
+    expect(evaluation.events).toHaveLength(1);
+  });
+
+  it('is rejected when the file is not an image, leaving the Position open', () => {
+    const notAnImage = new Blob(['exit 110'], { type: 'application/pdf' });
+
+    expect(evaluate(live, { ...aClose, evidence: notAnImage }, evidenceContext())).toEqual({
+      outcome: 'rejected',
+      reason: expect.stringMatching(/not an image/i),
     });
   });
 });

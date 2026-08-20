@@ -1,4 +1,6 @@
 import type {
+  EvidenceAttached,
+  EvidenceRemoved,
   PlanAbandoned,
   PlanCreated,
   PositionClosed,
@@ -98,4 +100,32 @@ export function stopMoved(
   fields: Partial<Omit<StopMoved, 'type'>> & { at: string },
 ): TradeTrackerEvent {
   return { type: 'StopMoved', planId: 'plan-1', stopPrice: 98, violations: [], ...fields };
+}
+
+/** A screenshot put on a Trade. The id names the blob the store holds. */
+export function evidenceAttached(
+  fields: Partial<Omit<EvidenceAttached, 'type'>> & { at: string },
+): TradeTrackerEvent {
+  return { type: 'EvidenceAttached', planId: 'plan-1', evidenceId: 'shot-1', ...fields };
+}
+
+/** A screenshot taken back off a Trade. */
+export function evidenceRemoved(
+  fields: Partial<Omit<EvidenceRemoved, 'type'>> & { at: string },
+): TradeTrackerEvent {
+  return { type: 'EvidenceRemoved', planId: 'plan-1', ...fields };
+}
+
+/**
+ * A screenshot exactly as the phone's picker hands one over — a `File`, which
+ * is the Blob the storage port stores. Four bytes rather than a real PNG:
+ * nothing in this app opens it, so nothing needs it to decode.
+ */
+export function screenshot(bytes: number[] = [137, 80, 78, 71], name = 'fill.png'): File {
+  return new File([new Uint8Array(bytes)], name, { type: 'image/png' });
+}
+
+/** The bytes of a stored screenshot, for comparing one blob against another. */
+export async function bytesOf(image: Blob): Promise<Uint8Array> {
+  return new Uint8Array(await image.arrayBuffer());
 }

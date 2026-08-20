@@ -8,7 +8,7 @@ import { isPlannableRiskFraction, roundRiskFraction } from './risk';
 import { blocks, warnings, type RuleVerdict, type Violation } from './rules';
 import { closeOut } from './settlement';
 import { sizeNewPlan } from './sizing';
-import type { DerivedState, Position } from './state';
+import type { DerivedState, Position, Trade } from './state';
 import type { ProposedClose } from './trade';
 
 /**
@@ -85,9 +85,36 @@ export interface MoveStop extends Overridable {
 export interface ClosePosition extends ProposedClose {
   readonly type: 'ClosePosition';
   readonly planId: string;
+  /**
+   * The screenshot of the exchange's closed-position screen, or null.
+   * Optional on purpose: proof of a fill is worth having and is no reason to
+   * leave a Position open, so a close without one is a complete close.
+   */
+  readonly evidence?: Blob | null;
   /** Null unless the trader corrected the stamp the clock made. */
   readonly openedAt: string | null;
   readonly closedAt: string | null;
+}
+
+/**
+ * Putting a screenshot on a Trade, or over the one already there. It is the
+ * same command either way — replacing is attaching, and the Trade shows the
+ * latest.
+ *
+ * The image goes no further than storage. Nothing here opens it and nothing
+ * downstream reads it, so no figure on the Trade can have come out of it
+ * (ADR-0003).
+ */
+export interface AttachEvidence {
+  readonly type: 'AttachEvidence';
+  readonly planId: string;
+  readonly image: Blob;
+}
+
+/** Taking the screenshot back off a Trade. */
+export interface RemoveEvidence {
+  readonly type: 'RemoveEvidence';
+  readonly planId: string;
 }
 
 export interface SetRiskDefault {
@@ -104,7 +131,15 @@ export type Command =
   | OpenPosition
   | MoveStop
   | ClosePosition
+  | AttachEvidence
+  | RemoveEvidence
   | SetRiskDefault;
+
+/** A screenshot on its way to storage, under the id the events name it by. */
+export interface AttachedImage {
+  readonly id: string;
+  readonly image: Blob;
+}
 
 /**
  * What evaluating a command produced: the events to append, the Rules that
@@ -117,7 +152,25 @@ export type Command =
  * would produce anything to record.
  */
 export type Evaluation =
-  | { readonly outcome: 'append'; readonly events: readonly TradeTrackerEvent[] }
+  | {
+      readonly outcome: 'append';
+      readonly events: readonly TradeTrackerEvent[];
+      /**
+       * The image an EvidenceAttached in this batch points at. It travels
+       * beside the events rather than inside them because a screenshot is
+       * hundreds of kilobytes and the log is read whole on every open — and
+       * because the two have to be written in that order: the image first, so
+       * a Trade never claims proof the store cannot produce.
+       */
+      readonly attaches?: AttachedImage;
+      /**
+       * The screenshot nothing points at once these events land — the one
+       * replaced, or the one removed. Given up only *after* the events are
+       * safely down, so a failed append can never destroy the proof a Trade
+       * still stands on.
+       */
+      readonly discards?: string;
+    }
   | { readonly outcome: 'blocked'; readonly verdicts: readonly RuleVerdict[] }
   | { readonly outcome: 'rejected'; readonly reason: string };
 
@@ -154,6 +207,10 @@ export function evaluate(
       return evaluateMoveStop(state, command, context);
     case 'ClosePosition':
       return evaluateClosePosition(state, command, context);
+    case 'AttachEvidence':
+      return evaluateAttachEvidence(state, command, context);
+    case 'RemoveEvidence':
+      return evaluateRemoveEvidence(state, command, context);
     case 'SetRiskDefault':
       return evaluateSetRiskDefault(command, context);
   }
@@ -478,7 +535,7 @@ function evaluateMoveStop(
 function evaluateClosePosition(
   state: DerivedState,
   command: ClosePosition,
-  { clock }: CommandContext,
+  { clock, ids }: CommandContext,
 ): Evaluation {
   const position = state.openPositions.find((open) => open.plan.id === command.planId);
   if (!position) {
@@ -491,18 +548,122 @@ function evaluateClosePosition(
   const hold = holdOf(position, command, clock.now().toISOString());
   if (hold.outcome !== 'held') return { outcome: 'rejected', reason: hold.reason };
 
+  const closed: TradeTrackerEvent = {
+    type: 'PositionClosed',
+    at: hold.at,
+    planId: command.planId,
+    openedAt: hold.openedAt,
+    closedAt: hold.closedAt,
+    ...close.closing,
+  };
+
+  // No screenshot is nothing to report: Evidence is optional, and a Position
+  // left open because the trader had no picture would be the app refusing to
+  // record something that has already happened.
+  const evidence = command.evidence ?? null;
+  if (!evidence) return { outcome: 'append', events: [closed] };
+
+  if (!isImage(evidence)) return { outcome: 'rejected', reason: NOT_AN_IMAGE };
+
+  const evidenceId = ids.next();
+  return {
+    outcome: 'append',
+    // One batch, so the Trade and its proof land together or not at all.
+    events: [
+      closed,
+      { type: 'EvidenceAttached', at: hold.at, planId: command.planId, evidenceId },
+    ],
+    attaches: { id: evidenceId, image: evidence },
+  };
+}
+
+const NOT_AN_IMAGE = 'Evidence is a screenshot — that file is not an image.';
+
+/**
+ * Whether this is a picture, by the type the operating system handed over with
+ * it. Not a reading of the image: nothing here opens the bytes, and what comes
+ * out of it decides no figure — only whether the Trade detail would end up
+ * rendering a broken picture (ADR-0003).
+ */
+function isImage(file: Blob): boolean {
+  return file.type.startsWith('image/');
+}
+
+/** The Trade a screenshot belongs to, or why there is not one to hang it on. */
+type TradeLookup =
+  | { readonly outcome: 'found'; readonly trade: Trade }
+  | { readonly outcome: 'rejected'; readonly reason: string };
+
+/**
+ * Finding the Trade a screenshot belongs to. Evidence is proof of a fill, so
+ * there has to have been one: a Plan still waiting, or still live, has nothing
+ * yet for a screenshot to be proof of — and no reason typed into it would make
+ * one, which is why this refuses rather than blocking.
+ */
+function tradeOf(state: DerivedState, planId: string): TradeLookup {
+  const trade = state.trades.find((candidate) => candidate.plan.id === planId);
+  return trade
+    ? { outcome: 'found', trade }
+    : {
+        outcome: 'rejected',
+        reason: 'A screenshot is proof of a fill — that Plan has not closed as a Trade.',
+      };
+}
+
+/**
+ * Putting a screenshot on a Trade. Replacing one is the same command, and the
+ * screenshot it replaces is named here for giving up once this is recorded.
+ */
+function evaluateAttachEvidence(
+  state: DerivedState,
+  command: AttachEvidence,
+  { clock, ids }: CommandContext,
+): Evaluation {
+  const found = tradeOf(state, command.planId);
+  if (found.outcome !== 'found') return found;
+
+  if (!isImage(command.image)) return { outcome: 'rejected', reason: NOT_AN_IMAGE };
+
+  const evidenceId = ids.next();
   return {
     outcome: 'append',
     events: [
       {
-        type: 'PositionClosed',
-        at: hold.at,
+        type: 'EvidenceAttached',
+        at: clock.now().toISOString(),
         planId: command.planId,
-        openedAt: hold.openedAt,
-        closedAt: hold.closedAt,
-        ...close.closing,
+        evidenceId,
       },
     ],
+    attaches: { id: evidenceId, image: command.image },
+    ...(found.trade.evidenceId === null ? {} : { discards: found.trade.evidenceId }),
+  };
+}
+
+/**
+ * Taking the screenshot back off. Not an erasure — the log keeps the row, and
+ * only the image itself goes, because the image is the part that costs
+ * hundreds of kilobytes on a phone.
+ */
+function evaluateRemoveEvidence(
+  state: DerivedState,
+  command: RemoveEvidence,
+  { clock }: CommandContext,
+): Evaluation {
+  const found = tradeOf(state, command.planId);
+  if (found.outcome !== 'found') return found;
+
+  // Not a Rule and not overridable: removing nothing records nothing, and no
+  // reason typed into it would produce an event.
+  const evidenceId = found.trade.evidenceId;
+  if (evidenceId === null) {
+    return { outcome: 'rejected', reason: 'There is no screenshot on that Trade.' };
+  }
+
+  return {
+    outcome: 'append',
+    events: [{ type: 'EvidenceRemoved', at: clock.now().toISOString(), planId: command.planId }],
+    discards: evidenceId,
   };
 }
 

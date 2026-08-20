@@ -7,6 +7,7 @@ import { formatExitReason, fromDateTimeInput, toDateTimeInput } from '../format'
 import type { RecordResult } from '../useTradeTracker';
 import { useSubmission } from '../useSubmission';
 import Field from './Field';
+import ScreenshotPicker from './ScreenshotPicker';
 
 interface ClosePositionFormProps {
   position: Position;
@@ -34,6 +35,9 @@ export default function ClosePositionForm({ position, clock, onClose }: ClosePos
   const [typedEntry, setTypedEntry] = useState<string | null>(null);
   const [typedOpenedAt, setTypedOpenedAt] = useState<string | null>(null);
   const [typedClosedAt, setTypedClosedAt] = useState<string | null>(null);
+  // Optional, and held here until the close is submitted, so the image and the
+  // Trade it is proof of are recorded as one thing.
+  const [evidence, setEvidence] = useState<File | null>(null);
   // Stamped when the corrections are opened rather than when the form mounted,
   // which may have been hours ago — the point of the field is a true hold.
   const [correctingSince, setCorrectingSince] = useState<Date | null>(null);
@@ -54,6 +58,7 @@ export default function ClosePositionForm({ position, clock, onClose }: ClosePos
         scaledIn,
         scaledOut,
         notes: fields.notes,
+        evidence,
         openedAt: typedOpenedAt === null ? null : fromDateTimeInput(typedOpenedAt),
         closedAt: typedClosedAt === null ? null : fromDateTimeInput(typedClosedAt),
       }),
@@ -65,6 +70,7 @@ export default function ClosePositionForm({ position, clock, onClose }: ClosePos
       setTypedOpenedAt(null);
       setTypedClosedAt(null);
       setCorrectingSince(null);
+      setEvidence(null);
     },
   );
 
@@ -191,6 +197,37 @@ export default function ClosePositionForm({ position, clock, onClose }: ClosePos
         checked={scaledOut}
         onChange={() => setScaledOut((current) => !current)}
       />
+
+      {/* Optional, and said so: a screenshot is proof of the fill and never a
+          source of one, so a Position is never held open for want of a
+          picture (ADR-0003). */}
+      <ScreenshotPicker
+        id="close-evidence"
+        label="Screenshot (optional)"
+        onPick={(image) => {
+          setEvidence(image);
+          clearOutcome();
+        }}
+      />
+      {evidence && (
+        <p className="close__note">
+          {evidence.name} will be attached to the Trade.{' '}
+          {/* Load-bearing rather than tidy. A screenshot the core will not
+              store would otherwise ride along on every submit from here, and
+              a Position that cannot be closed for want of the right picture
+              is the app refusing to record a trade that already happened. */}
+          <button
+            type="button"
+            className="close__unpick"
+            onClick={() => {
+              setEvidence(null);
+              clearOutcome();
+            }}
+          >
+            Clear the screenshot
+          </button>
+        </p>
+      )}
 
       <button className="close__submit" type="submit" disabled={saving}>
         Close Position

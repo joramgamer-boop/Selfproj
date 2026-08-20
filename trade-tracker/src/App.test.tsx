@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import App from './App';
 import { fixedClock } from './core/clock';
@@ -8,11 +8,14 @@ import type { EventStore } from './storage/eventStore';
 import type { DurableStorage } from './storage/durability';
 import type { TradeTrackerEvent } from './core/events';
 import {
+  bytesOf,
   deposit,
+  evidenceAttached,
   planAbandoned,
   planCreated,
   positionClosed,
   positionOpened,
+  screenshot,
   stopMoved,
   withdrawal,
 } from './test/events';
@@ -21,12 +24,14 @@ import { toDateTimeInput } from './format';
 const clock = fixedClock('2026-05-04T12:30:00.000Z');
 const durable: DurableStorage = { request: async () => 'durable' };
 
-function renderApp(log: TradeTrackerEvent[] = []) {
-  const store = createMemoryEventStore(log);
+function renderApp(log: TradeTrackerEvent[] = [], evidence = new Map<string, Blob>()) {
+  // The screenshots beside the log, so a test can ask what the store is
+  // actually holding rather than what the screen claims it is.
+  const store = createMemoryEventStore(log, evidence);
   const view = render(
     <App store={store} clock={clock} ids={sequentialIds()} durableStorage={durable} />,
   );
-  return { log, view };
+  return { log, evidence, view };
 }
 
 async function recordDeposit(amount: string) {
@@ -102,7 +107,7 @@ describe('the account screen', () => {
       saved = resolve;
     });
     const slowStore: EventStore = {
-      read: () => inner.read(),
+      ...inner,
       append: async (events) => {
         await held;
         await inner.append(events);
@@ -1052,5 +1057,187 @@ describe('the Trade log', () => {
     expect(document.body.textContent).not.toMatch(
       /win rate|expectancy|average|avg R|equity curve|trades logged/i,
     );
+  });
+});
+
+describe('Evidence — a screenshot as proof of the fill', () => {
+  const openedAt = '2026-01-03T09:00:00.000Z';
+  const closedAt = '2026-01-04T09:00:00.000Z';
+  const live = () => [
+    deposit(500, '2026-01-01T09:00:00.000Z'),
+    planCreated({ at: '2026-01-02T09:00:00.000Z' }),
+    positionOpened(openedAt),
+  ];
+  const traded = () => [...live(), positionClosed({ at: closedAt, openedAt })];
+  const evidenced = () => [...traded(), evidenceAttached({ at: closedAt, evidenceId: 'shot-1' })];
+
+  /** The store already holding the screenshot the fixture log points at. */
+  function stored(bytes = [1, 2, 3]) {
+    return new Map<string, Blob>([['shot-1', screenshot(bytes)]]);
+  }
+
+  async function closePosition(file?: File) {
+    const user = userEvent.setup();
+    await user.type(await screen.findByLabelText(/exit price/i), '110');
+    await user.type(screen.getByLabelText(/^fees$/i), '1');
+    await user.type(screen.getByLabelText(/best price/i), '114');
+    await user.selectOptions(screen.getByLabelText(/exit reason/i), 'take-profit hit');
+    if (file) await user.upload(screen.getByLabelText(/screenshot/i), file);
+    await user.click(screen.getByRole('button', { name: /close position/i }));
+  }
+
+  /** The Trade's own detail, which is where a screenshot is looked at. */
+  async function openTheDetail() {
+    await userEvent
+      .setup()
+      .click(await screen.findByRole('button', { name: /everything logged/i }));
+  }
+
+  it('attaches a screenshot as the Position is closed, and keeps it against the Trade', async () => {
+    const { log, evidence } = renderApp(live());
+
+    await closePosition(screenshot());
+
+    await waitFor(() => expect(log).toHaveLength(5));
+    expect(log[3]).toMatchObject({ type: 'PositionClosed' });
+    expect(log[4]).toMatchObject({ type: 'EvidenceAttached', planId: 'plan-1' });
+    // The image itself is in the store, not in the log.
+    expect(evidence.size).toBe(1);
+    expect(await bytesOf([...evidence.values()][0])).toEqual(new Uint8Array([137, 80, 78, 71]));
+  });
+
+  it('fills in no field from the image — the close is judged on what was typed', async () => {
+    const { log } = renderApp(live());
+    const user = userEvent.setup();
+
+    await user.type(await screen.findByLabelText(/exit price/i), '110');
+    await user.type(screen.getByLabelText(/^fees$/i), '1');
+    await user.selectOptions(screen.getByLabelText(/exit reason/i), 'take-profit hit');
+    await user.upload(screen.getByLabelText(/screenshot/i), screenshot());
+    await user.click(screen.getByRole('button', { name: /close position/i }));
+
+    // A Best Price the screenshot could never have held, so nothing was taken
+    // out of it to stand in for the missing figure (ADR-0003).
+    expect(await screen.findByRole('alert')).toHaveTextContent(/best price is required/i);
+    expect(log).toHaveLength(3);
+    expect(await screen.findByLabelText(/open position/i)).toBeInTheDocument();
+  });
+
+  it('shows the screenshot on the Trade, once it has one', async () => {
+    renderApp(evidenced(), stored());
+
+    await openTheDetail();
+
+    const image = await screen.findByRole('img', { name: /screenshot/i });
+    await waitFor(() => expect(image.getAttribute('src')).toMatch(/^blob:/));
+  });
+
+  it('attaches a screenshot to a Trade that was logged without one', async () => {
+    const { log, evidence } = renderApp(traded());
+    await openTheDetail();
+
+    await userEvent.setup().upload(await screen.findByLabelText(/attach a screenshot/i), screenshot());
+
+    await waitFor(() => expect(log).toHaveLength(5));
+    expect(log[4]).toMatchObject({ type: 'EvidenceAttached', planId: 'plan-1' });
+    expect(await screen.findByRole('img', { name: /screenshot/i })).toBeInTheDocument();
+    expect(evidence.size).toBe(1);
+  });
+
+  it('replaces the screenshot, and gives up the one it replaced', async () => {
+    const { log, evidence } = renderApp(evidenced(), stored());
+    await openTheDetail();
+
+    await userEvent
+      .setup()
+      .upload(await screen.findByLabelText(/replace the screenshot/i), screenshot([7, 7, 7]));
+
+    await waitFor(() => expect(log).toHaveLength(6));
+    expect(log[5]).toMatchObject({ type: 'EvidenceAttached' });
+    // One screenshot, and it is the new one: the replaced image is not left
+    // taking up space nothing can reach.
+    expect(evidence.size).toBe(1);
+    expect(await bytesOf([...evidence.values()][0])).toEqual(new Uint8Array([7, 7, 7]));
+  });
+
+  it('removes the screenshot from the Trade, and drops the image with it', async () => {
+    const { log, evidence } = renderApp(evidenced(), stored());
+    await openTheDetail();
+
+    await userEvent.setup().click(await screen.findByRole('button', { name: /remove the screenshot/i }));
+
+    await waitFor(() => expect(log).toHaveLength(6));
+    expect(log[5]).toMatchObject({ type: 'EvidenceRemoved', planId: 'plan-1' });
+    expect(evidence.size).toBe(0);
+    expect(await screen.findByLabelText(/attach a screenshot/i)).toBeInTheDocument();
+  });
+
+  it('opens the screenshot full size, and closes it again', async () => {
+    renderApp(evidenced(), stored());
+    await openTheDetail();
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('button', { name: /view full size/i }));
+
+    const viewer = await screen.findByRole('dialog', { name: /screenshot/i });
+    expect(within(viewer).getByRole('img', { name: /screenshot/i })).toBeInTheDocument();
+
+    await user.click(within(viewer).getByRole('button', { name: /close/i }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+
+    // And back up, closed with the key a desktop reader reaches for.
+    await user.click(screen.getByRole('button', { name: /view full size/i }));
+    await screen.findByRole('dialog', { name: /screenshot/i });
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('still has the screenshot after a full reload', async () => {
+    const { log, evidence } = renderApp(live());
+    await closePosition(screenshot());
+    await waitFor(() => expect(log).toHaveLength(5));
+
+    cleanup();
+    render(
+      <App
+        store={createMemoryEventStore(log, evidence)}
+        clock={clock}
+        ids={sequentialIds()}
+        durableStorage={durable}
+      />,
+    );
+    await openTheDetail();
+
+    const image = await screen.findByRole('img', { name: /screenshot/i });
+    await waitFor(() => expect(image.getAttribute('src')).toMatch(/^blob:/));
+  });
+
+  it('lets a refused file be cleared, so a screenshot can never hold a Position open', async () => {
+    const { log, evidence } = renderApp(live());
+    // Past the picker's own accept filter, which not every phone honours:
+    // whether a file is an image is the core's answer, not the input's.
+    const user = userEvent.setup({ applyAccept: false });
+
+    await user.type(await screen.findByLabelText(/exit price/i), '110');
+    await user.type(screen.getByLabelText(/^fees$/i), '1');
+    await user.type(screen.getByLabelText(/best price/i), '114');
+    await user.selectOptions(screen.getByLabelText(/exit reason/i), 'take-profit hit');
+    await user.upload(
+      screen.getByLabelText(/screenshot/i),
+      new File(['exit 110'], 'notes.txt', { type: 'text/plain' }),
+    );
+    await user.click(screen.getByRole('button', { name: /close position/i }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/not an image/i);
+    expect(log).toHaveLength(3);
+
+    // The way out: drop the picture and close anyway. Without it the wrong
+    // file rides along on every submit and the Position never closes.
+    await user.click(screen.getByRole('button', { name: /clear the screenshot/i }));
+    await user.click(screen.getByRole('button', { name: /close position/i }));
+
+    await waitFor(() => expect(log).toHaveLength(4));
+    expect(await screen.findByLabelText(/^balance$/i)).toHaveTextContent('$524.00');
+    expect(evidence.size).toBe(0);
   });
 });

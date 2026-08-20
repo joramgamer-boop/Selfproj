@@ -5,8 +5,11 @@ import { describeEventStoreContract, type EventStoreFactory } from './eventStore
 import type { TradeTrackerEvent } from '../core/events';
 
 describeEventStoreContract('in-memory', (): EventStoreFactory => {
+  // One body of data, handed to every handle the factory opens: the log and
+  // the screenshots alike, since reopening the app must find both.
   const log: TradeTrackerEvent[] = [];
-  return { open: async () => createMemoryEventStore(log) };
+  const evidence = new Map<string, Blob>();
+  return { open: async () => createMemoryEventStore(log, evidence) };
 });
 
 let databases = 0;

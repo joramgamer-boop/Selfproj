@@ -1,5 +1,7 @@
 import { baseAfterWithdrawal, drawdownOf, isPastTripwire } from './account';
 import type {
+  EvidenceAttached,
+  EvidenceRemoved,
   PlanAbandoned,
   PositionClosed,
   PositionOpened,
@@ -129,6 +131,13 @@ export interface Trade extends ClosingRecord {
    * 1R stays fixed to the Plan's original Stop (ADR-0001).
    */
   readonly stopMoves: readonly StopMove[];
+  /**
+   * The screenshot that stands as proof of this fill, or null where there is
+   * none — attaching one is optional, and a Trade without one is a complete
+   * Trade. It names a blob in the store rather than holding an image, and
+   * nothing anywhere else on this record was read out of it (ADR-0003).
+   */
+  readonly evidenceId: string | null;
 }
 
 export interface DerivedState {
@@ -199,6 +208,11 @@ export function deriveState(events: readonly TradeTrackerEvent[]): DerivedState 
   const records = new Map<string, PlanRecord>();
   const open = new Map<string, Position>();
   const trades: Trade[] = [];
+  // The screenshot each Trade currently stands on, by Plan id. Unlike a
+  // Violation this is not a snapshot of a moment — it is whatever the last
+  // attach or removal left — so it is resolved once at the end rather than
+  // written onto the Trade as it closes.
+  const evidence = new Map<string, string>();
   let balance = 0;
   let base = 0;
   let peakBalance = 0;
@@ -389,6 +403,9 @@ export function deriveState(events: readonly TradeTrackerEvent[]): DerivedState 
           // Taken off the Position as it closes, since that is the last moment
           // the moves exist anywhere: the Position itself is about to go.
           stopMoves: position.stopMoves,
+          // Filled in at the end of the fold: a screenshot may be attached
+          // long after the close, and taken off again after that.
+          evidenceId: null,
         });
         ledger.push({
           seq,
@@ -403,6 +420,22 @@ export function deriveState(events: readonly TradeTrackerEvent[]): DerivedState 
           amount: settlement.realizedPnl,
           balanceAfter: balance,
         });
+        break;
+      }
+      case 'EvidenceAttached': {
+        // Evidence is proof of a fill, so there has to have been one. A
+        // screenshot folded against a Plan that never closed would reach no
+        // Trade and simply vanish, leaving a stored image nothing on screen
+        // can ever reach.
+        requireClosed(records, event);
+        evidence.set(event.planId, event.evidenceId);
+        break;
+      }
+      case 'EvidenceRemoved': {
+        requireClosed(records, event);
+        // Deliberately not an error when there was nothing to remove: it
+        // contradicts nothing and folds to the right answer either way.
+        evidence.delete(event.planId);
         break;
       }
       case 'RiskDefaultChanged':
@@ -430,7 +463,10 @@ export function deriveState(events: readonly TradeTrackerEvent[]): DerivedState 
     ledger,
     plans: [...records.values()].map(asPlan),
     openPositions: [...open.values()],
-    trades,
+    trades: trades.map((trade) => ({
+      ...trade,
+      evidenceId: evidence.get(trade.plan.id) ?? null,
+    })),
     riskDefault,
   };
 }
@@ -446,9 +482,31 @@ export function plansAwaitingADecision(state: DerivedState): readonly Plan[] {
   return state.plans.filter((plan) => plan.status === 'planned');
 }
 
+/**
+ * The Plan behind an Evidence event, insisting it has closed as a Trade.
+ * Evidence hangs off the Trade, which is the only thing a fill can be proof of.
+ */
+function requireClosed(
+  records: Map<string, PlanRecord>,
+  event: EvidenceAttached | EvidenceRemoved,
+): void {
+  const record = planOf(records, event);
+  if (record.status !== 'closed') {
+    throw new Error(
+      `Stored ${event.type} refers to ${event.planId}, a Plan that has not closed as a Trade.`,
+    );
+  }
+}
+
 function planOf(
   records: Map<string, PlanRecord>,
-  event: PlanAbandoned | PositionOpened | StopMoved | PositionClosed,
+  event:
+    | PlanAbandoned
+    | PositionOpened
+    | StopMoved
+    | PositionClosed
+    | EvidenceAttached
+    | EvidenceRemoved,
 ): PlanRecord {
   const record = records.get(event.planId);
   if (!record) {

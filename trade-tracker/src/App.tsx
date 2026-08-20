@@ -15,6 +15,7 @@ import { withdrawalWarnings } from './core/commands';
 import { tradeLog } from './core/log';
 import { plansAwaitingADecision } from './core/state';
 import type { IdSource } from './core/ids';
+import type { EvidenceActions } from './evidence';
 import type { DurableStorage } from './storage/durability';
 import type { EventStore } from './storage/eventStore';
 import { useDurability } from './useDurability';
@@ -30,11 +31,21 @@ interface AppProps {
 
 export default function App({ store, clock, ids, durableStorage }: AppProps) {
   const context = useMemo(() => ({ clock, ids }), [clock, ids]);
-  const { status, state, record } = useTradeTracker(store, context);
+  const { status, state, record, openEvidence } = useTradeTracker(store, context);
   const durability = useDurability(durableStorage);
   // Derived where every other figure is: by folding the log, in the core.
   const log = useMemo(() => tradeLog(state), [state]);
   const waiting = useMemo(() => plansAwaitingADecision(state), [state]);
+  // One capability rather than three props: looking at a screenshot, putting
+  // one on, and taking one off all travel down to the same Trade detail.
+  const evidence = useMemo<EvidenceActions>(
+    () => ({
+      open: openEvidence,
+      attach: (planId, image) => record({ type: 'AttachEvidence', planId, image }),
+      remove: (planId) => record({ type: 'RemoveEvidence', planId }),
+    }),
+    [openEvidence, record],
+  );
 
   if (status === 'loading') {
     return (
@@ -76,7 +87,7 @@ export default function App({ store, clock, ids, durableStorage }: AppProps) {
       {/* Beneath the Plans awaiting a decision, because it is what gets read
           rather than acted on — and above the account, because a review starts
           with the Trades and only then asks what they did to the Balance. */}
-      <TradeLog rows={log} />
+      <TradeLog rows={log} evidence={evidence} />
       <DepositForm onRecord={(amount) => record({ type: 'RecordDeposit', amount })} />
       <WithdrawalForm
         warningsFor={(amount) => withdrawalWarnings(state, amount)}

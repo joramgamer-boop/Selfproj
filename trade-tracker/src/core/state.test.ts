@@ -2,6 +2,8 @@ import { deriveState } from './state';
 import {
   deposit,
   drawdownReviewAcknowledged,
+  evidenceAttached,
+  evidenceRemoved,
   planAbandoned,
   planCreated,
   positionClosed,
@@ -279,6 +281,7 @@ describe('closing a Position into a Trade', () => {
         grossPnl: 25,
         realizedPnl: 24,
         stopMoves: [],
+        evidenceId: null,
       },
     ]);
   });
@@ -906,5 +909,77 @@ describe('the base, on an account already under water', () => {
     // A Balance of 900 against a base of 1100: still under it, so a
     // Withdrawal of any size is still coming out of the base.
     expect(state).toMatchObject({ balance: 900, base: 1100 });
+  });
+});
+
+describe('Evidence on a Trade', () => {
+  const openedAt = '2026-01-03T09:00:00.000Z';
+  const closed = [
+    deposit(500, '2026-01-01T09:00:00.000Z'),
+    planCreated({ at: '2026-01-02T09:00:00.000Z' }),
+    positionOpened(openedAt),
+    positionClosed({ at: '2026-01-04T09:00:00.000Z', openedAt }),
+  ];
+
+  it('is absent on a Trade that was never given one', () => {
+    expect(deriveState(closed).trades[0].evidenceId).toBeNull();
+  });
+
+  it('names the screenshot the store holds, once one is attached', () => {
+    const state = deriveState([
+      ...closed,
+      evidenceAttached({ at: '2026-01-04T09:05:00.000Z', evidenceId: 'shot-1' }),
+    ]);
+
+    expect(state.trades[0].evidenceId).toBe('shot-1');
+  });
+
+  it('is the latest screenshot when one replaced another', () => {
+    const state = deriveState([
+      ...closed,
+      evidenceAttached({ at: '2026-01-04T09:05:00.000Z', evidenceId: 'shot-1' }),
+      evidenceAttached({ at: '2026-01-05T09:00:00.000Z', evidenceId: 'shot-2' }),
+    ]);
+
+    expect(state.trades[0].evidenceId).toBe('shot-2');
+  });
+
+  it('is gone once the screenshot is removed, and the Trade is otherwise untouched', () => {
+    const state = deriveState([
+      ...closed,
+      evidenceAttached({ at: '2026-01-04T09:05:00.000Z' }),
+      evidenceRemoved({ at: '2026-01-06T09:00:00.000Z' }),
+    ]);
+
+    expect(state.trades[0]).toMatchObject({ evidenceId: null, exitPrice: 110, realizedPnl: 24 });
+  });
+
+  it('moves no money — a screenshot is proof of the fill, not part of it', () => {
+    const state = deriveState([...closed, evidenceAttached({ at: '2026-01-04T09:05:00.000Z' })]);
+
+    expect(state.balance).toBe(524);
+    expect(state.ledger).toHaveLength(2);
+  });
+
+  it('stays on the Trade it belongs to when another Trade has its own', () => {
+    const state = deriveState([
+      ...closed,
+      evidenceAttached({ at: '2026-01-04T09:05:00.000Z', evidenceId: 'shot-1' }),
+      planCreated({ at: '2026-02-02T09:00:00.000Z', id: 'plan-2' }),
+      positionOpened('2026-02-03T09:00:00.000Z', 'plan-2'),
+      positionClosed({ at: '2026-02-04T09:00:00.000Z', openedAt: '2026-02-03T09:00:00.000Z', planId: 'plan-2' }),
+      evidenceAttached({ at: '2026-02-04T09:05:00.000Z', planId: 'plan-2', evidenceId: 'shot-9' }),
+    ]);
+
+    expect(state.trades.map((trade) => trade.evidenceId)).toEqual(['shot-1', 'shot-9']);
+  });
+
+  it('refuses to fold a screenshot attached to a Plan that never closed', () => {
+    const events = [
+      ...closed.slice(0, 3),
+      evidenceAttached({ at: '2026-01-03T09:05:00.000Z' }),
+    ];
+
+    expect(() => deriveState(events)).toThrow(/has not closed/i);
   });
 });

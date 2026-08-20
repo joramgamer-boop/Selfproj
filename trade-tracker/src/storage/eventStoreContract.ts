@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import type { TradeTrackerEvent } from '../core/events';
-import { deposit, planCreated, positionClosed } from '../test/events';
+import {
+  bytesOf,
+  deposit,
+  evidenceAttached,
+  planCreated,
+  positionClosed,
+  screenshot,
+} from '../test/events';
 import type { EventStore } from './eventStore';
 
 /**
@@ -128,6 +135,77 @@ export function describeEventStoreContract(
       const reopened = await factory.open();
 
       expect(amounts(await reopened.read())).toEqual([500]);
+    });
+
+    it('round-trips a Trade with its screenshot attached', async () => {
+      const factory = createFactory();
+      const store = await factory.open();
+      const image = screenshot([137, 80, 78, 71, 13, 10, 26, 10]);
+      const closed = positionClosed({
+        at: '2026-05-04T12:30:00.000Z',
+        openedAt: '2026-05-04T09:15:00.000Z',
+        closedAt: '2026-05-04T12:25:00.000Z',
+      });
+
+      // In the order the app writes them: the image first, so a stored Trade
+      // never names proof the store cannot produce.
+      await store.putEvidence('shot-1', image);
+      await store.append([closed, evidenceAttached({ at: '2026-05-04T12:31:00.000Z' })]);
+
+      // Reopened, because the failure this guards against is the one that only
+      // shows up after the app is closed and the phone put away.
+      const reopened = await factory.open();
+      expect(await reopened.read()).toEqual([
+        closed,
+        evidenceAttached({ at: '2026-05-04T12:31:00.000Z' }),
+      ]);
+      const stored = await reopened.readEvidence('shot-1');
+      expect(stored).not.toBeNull();
+      expect(await bytesOf(stored!)).toEqual(await bytesOf(image));
+      // The type comes back too: without it the Trade detail has nothing to
+      // tell the browser what kind of picture it is holding.
+      expect(stored!.type).toBe('image/png');
+    });
+
+    it('has no screenshot under an id nothing was stored against', async () => {
+      const store = await createFactory().open();
+
+      expect(await store.readEvidence('shot-1')).toBeNull();
+    });
+
+    it('keeps one screenshot apart from another', async () => {
+      const store = await createFactory().open();
+
+      await store.putEvidence('shot-1', screenshot([1, 2, 3]));
+      await store.putEvidence('shot-2', screenshot([9, 9]));
+
+      expect(await bytesOf((await store.readEvidence('shot-1'))!)).toEqual(
+        new Uint8Array([1, 2, 3]),
+      );
+      expect(await bytesOf((await store.readEvidence('shot-2'))!)).toEqual(new Uint8Array([9, 9]));
+    });
+
+    it('gives up a screenshot that was removed, and says nothing when asked twice', async () => {
+      const factory = createFactory();
+      const store = await factory.open();
+      await store.putEvidence('shot-1', screenshot());
+
+      await store.deleteEvidence('shot-1');
+      // Removing what is already gone is not an error: the app gives up a
+      // replaced screenshot after the event is down, and may be asked to do it
+      // again by a retry that finds nothing left.
+      await store.deleteEvidence('shot-1');
+
+      expect(await (await factory.open()).readEvidence('shot-1')).toBeNull();
+    });
+
+    it('keeps one body of screenshots separate from another', async () => {
+      const store = await createFactory().open();
+      await store.putEvidence('shot-1', screenshot());
+
+      const other = await createFactory().open();
+
+      expect(await other.readEvidence('shot-1')).toBeNull();
     });
 
     it('keeps one body of data separate from another', async () => {

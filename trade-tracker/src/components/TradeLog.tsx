@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { AbandonedPlanRow, LogRow, TradeRow } from '../core/log';
+import type { EvidenceActions } from '../evidence';
 import {
   formatAbandonReason,
   formatCaptureRate,
@@ -20,7 +21,13 @@ import Violations from './Violations';
  * Trades (ADR-0002), and a statistic computed from fewer is the thing this app
  * exists to stop the trader steering by.
  */
-export default function TradeLog({ rows }: { rows: readonly LogRow[] }) {
+interface TradeLogProps {
+  rows: readonly LogRow[];
+  /** Passed through to the Trade detail, which is where a screenshot lives. */
+  evidence: EvidenceActions;
+}
+
+export default function TradeLog({ rows, evidence }: TradeLogProps) {
   return (
     <section className="log" aria-labelledby="log-heading">
       <h2 className="log__heading" id="log-heading">
@@ -32,7 +39,7 @@ export default function TradeLog({ rows }: { rows: readonly LogRow[] }) {
         <ul className="log__rows">
           {rows.map((row) =>
             row.kind === 'Trade' ? (
-              <TradeEntry key={row.trade.plan.id} row={row} />
+              <TradeEntry key={row.trade.plan.id} row={row} evidence={evidence} />
             ) : (
               <AbandonedEntry key={row.plan.id} row={row} />
             ),
@@ -50,7 +57,7 @@ export default function TradeLog({ rows }: { rows: readonly LogRow[] }) {
  * rule break that has to be opened to be seen is one that gets overlooked in
  * exactly the review it exists for.
  */
-function TradeEntry({ row }: { row: TradeRow }) {
+function TradeEntry({ row, evidence }: { row: TradeRow; evidence: EvidenceActions }) {
   const [open, setOpen] = useState(false);
   const { trade, rMultiple, captureRate } = row;
   const { plan } = trade;
@@ -94,7 +101,7 @@ function TradeEntry({ row }: { row: TradeRow }) {
       >
         {open ? 'Hide the detail' : 'Everything logged'}
       </button>
-      {open && <TradeDetail row={row} />}
+      {open && <TradeDetail row={row} evidence={evidence} />}
     </li>
   );
 }

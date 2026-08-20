@@ -22,6 +22,13 @@ export interface TradeTracker {
   readonly state: DerivedState;
   /** Evaluates the command in the core and, if it produced events, stores them. */
   record(command: Command): Promise<RecordResult>;
+  /**
+   * The screenshot a Trade names, fetched only when one is actually looked at.
+   * Everything else on the screen comes from folding the log; a screenshot is
+   * hundreds of kilobytes and would make every open pay for a picture nobody
+   * asked to see.
+   */
+  openEvidence(id: string): Promise<Blob | null>;
 }
 
 /**
@@ -55,24 +62,65 @@ export function useTradeTracker(store: EventStore, context: CommandContext): Tra
 
   const state = useMemo(() => deriveState(log), [log]);
 
+  /**
+   * Drops a screenshot nothing points at any more. Failing to is a few hundred
+   * kilobytes left behind where nothing can reach them — worth avoiding, and
+   * not worth telling the trader about, since the thing they asked for is
+   * recorded either way.
+   */
+  const forget = useCallback(
+    async (id: string) => {
+      try {
+        await store.deleteEvidence(id);
+      } catch {
+        // Left where it is. An unreachable blob costs space; a refusal here
+        // would cost the trader a Trade that was in fact recorded.
+      }
+    },
+    [store],
+  );
+
   const record = useCallback(
     async (command: Command): Promise<RecordResult> => {
       const evaluation = evaluate(deriveState(stored.current), command, context);
       if (evaluation.outcome !== 'append') return evaluation;
 
+      // The image before the events that name it. The other order would leave
+      // a Trade claiming proof of a fill that the store cannot produce — and
+      // on a phone that is out of space, that is the likely order to fail in.
+      const attaches = evaluation.attaches;
+      if (attaches) {
+        try {
+          await store.putEvidence(attaches.id, attaches.image);
+        } catch {
+          return {
+            outcome: 'rejected',
+            reason: 'Could not save that screenshot — nothing was recorded.',
+          };
+        }
+      }
+
       try {
         await store.append(evaluation.events);
       } catch {
         // Nothing was appended, so nothing is derived from it either. Say so
-        // rather than showing a Balance the Ledger does not actually hold.
+        // rather than showing a Balance the Ledger does not actually hold —
+        // and take back the image, which now points at nothing.
+        if (attaches) await forget(attaches.id);
         return { outcome: 'rejected', reason: 'Could not save that — nothing was recorded.' };
       }
 
       publish([...stored.current, ...evaluation.events]);
+
+      // Only now. Until the event was down, the screenshot being replaced was
+      // still the one the Trade stood on.
+      if (evaluation.discards) await forget(evaluation.discards);
       return { outcome: 'recorded' };
     },
-    [context, publish, store],
+    [context, forget, publish, store],
   );
 
-  return { status, state, record };
+  const openEvidence = useCallback((id: string) => store.readEvidence(id), [store]);
+
+  return { status, state, record, openEvidence };
 }

@@ -1,4 +1,5 @@
 import type { TradeRow } from '../core/log';
+import type { EvidenceActions } from '../evidence';
 import { availableMoveOf } from '../core/settlement';
 import {
   formatCaptureRate,
@@ -10,7 +11,14 @@ import {
   formatRiskPercent,
   formatWhen,
 } from '../format';
+import Evidence from './Evidence';
 import Violations from './Violations';
+
+interface TradeDetailProps {
+  row: TradeRow;
+  /** The screenshot on this Trade is opened, replaced and removed from here. */
+  evidence: EvidenceActions;
+}
 
 /**
  * One Trade, exhaustively: everything that was typed and everything solved
@@ -22,7 +30,7 @@ import Violations from './Violations';
  * quoted at 0.00001234 would round to $0.00 and the Stop would read as though
  * it sat at zero.
  */
-export default function TradeDetail({ row }: { row: TradeRow }) {
+export default function TradeDetail({ row, evidence }: TradeDetailProps) {
   const { trade, rMultiple, captureRate } = row;
   const { plan } = trade;
 
@@ -92,6 +100,10 @@ export default function TradeDetail({ row }: { row: TradeRow }) {
         </div>
       )}
       <Violations violations={plan.violations} />
+      {/* Last, and deliberately: everything above it is what the trader typed
+          and what was solved from it, and the screenshot is the one thing on
+          this screen that no figure came out of (ADR-0003). */}
+      <Evidence planId={plan.id} evidenceId={trade.evidenceId} evidence={evidence} />
     </div>
   );
 }
