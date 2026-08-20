@@ -1,4 +1,4 @@
-import { rMultipleOf, solveSettlement } from './settlement';
+import { availableMoveOf, captureRateOf, rMultipleOf, solveSettlement } from './settlement';
 import type { ClosingRecord } from './trade';
 import { deriveState } from './state';
 import type { Plan, Trade } from './state';
@@ -149,5 +149,147 @@ describe('what a Trade came to in R', () => {
 
     expect(trailed.plan.oneR).toBe(10);
     expect(rMultipleOf(trailed)).toBe(1);
+  });
+
+  it('reads a round-trip as the whole −1R it settled at, however far it ran first', () => {
+    // The R-multiple says only what the Trade cost. What was on offer at the
+    // peak is the Capture Rate's to report, and the two together are what make
+    // a round-trip legible.
+    const roundTrip = deriveState([
+      funded,
+      planned,
+      positionOpened(openedAt),
+      positionClosed({ at: closedAt, openedAt, exitPrice: 96, bestPrice: 108, fees: 0 }),
+    ]).trades[0];
+
+    expect(rMultipleOf(roundTrip)).toBe(-1);
+  });
+
+  it('reads a scaled exit as the one multiple its weighted average came to', () => {
+    // Half out at 112 and half at 104: one Trade at 108, worth $20 gross on
+    // 2.5 units, against the $10 of Risk it was sized to.
+    const scaled = deriveState([
+      funded,
+      planned,
+      positionOpened(openedAt),
+      positionClosed({ at: closedAt, openedAt, exitPrice: 108, fees: 0, scaledOut: true }),
+    ]).trades[0];
+
+    expect(rMultipleOf(scaled)).toBe(2);
+  });
+});
+
+describe('what share of the available move a Trade kept', () => {
+  const funded = deposit(500, '2026-01-01T09:00:00.000Z');
+  const at = '2026-01-03T09:00:00.000Z';
+
+  /** The Trade a close of the standard long produces. */
+  function tradeClosing(fields: Partial<Parameters<typeof positionClosed>[0]>): Trade {
+    return deriveState([
+      funded,
+      planCreated({ at: '2026-01-02T09:00:00.000Z' }),
+      positionOpened(at),
+      positionClosed({ at, ...fields }),
+    ]).trades[0];
+  }
+
+  it('is the move kept over the move that was there, on a winner', () => {
+    // Entered at 100, ran to 114, exited at 110: ten dollars of the fourteen
+    // that were on offer.
+    expect(captureRateOf(tradeClosing({ exitPrice: 110, bestPrice: 114 }))).toBeCloseTo(10 / 14, 10);
+  });
+
+  it('reads a loser as a negative share, because the move kept was backwards', () => {
+    const stoppedOut = tradeClosing({ exitPrice: 96, bestPrice: 102, exitReason: 'stop hit' });
+
+    // Two dollars were available and four were lost: a Trade that gave back
+    // everything on offer and then the Risk on top.
+    expect(captureRateOf(stoppedOut)).toBeCloseTo(-2, 10);
+  });
+
+  it('reads a round-trip as the whole available move handed back', () => {
+    // The most expensive leak there is: +8 on offer at the peak, and it closed
+    // a whole R below the entry. The Capture Rate is only readable at all
+    // because Best Price is required on losers as well as winners.
+    const roundTrip = tradeClosing({ exitPrice: 96, bestPrice: 108, exitReason: 'stop hit' });
+
+    expect(captureRateOf(roundTrip)).toBeCloseTo(-0.5, 10);
+  });
+
+  it('measures a scaled exit against its weighted average, so it still means something', () => {
+    // Half out at 112 and half at 104 is one Trade at 108, not two Trades.
+    const scaled = tradeClosing({ exitPrice: 108, bestPrice: 114, scaledOut: true });
+
+    expect(captureRateOf(scaled)).toBeCloseTo(8 / 14, 10);
+  });
+
+  it('measures a short the same way, in the direction the Trade was taken', () => {
+    const short = deriveState([
+      funded,
+      planCreated({ at: '2026-01-02T09:00:00.000Z', direction: 'short', stopPrice: 104, liquidationPrice: 120 }),
+      positionOpened(at),
+      positionClosed({ at, exitPrice: 90, bestPrice: 86, exitReason: 'take-profit hit' }),
+    ]).trades[0];
+
+    // A short's favourable direction is down: 10 of the 14 that fell.
+    expect(captureRateOf(short)).toBeCloseTo(10 / 14, 10);
+  });
+
+  it('has no answer when no move was ever available', () => {
+    // The price never traded above the entry, so there was no move to keep a
+    // share of. Reporting 0% would say the trade was managed badly; it says
+    // nothing of the kind.
+    const straightDown = tradeClosing({ exitPrice: 96, bestPrice: 100, exitReason: 'stop hit' });
+
+    expect(captureRateOf(straightDown)).toBeNull();
+  });
+
+  it('measures the move from the entry actually filled, not the one planned', () => {
+    const late = tradeClosing({ entryPrice: 102, exitPrice: 110, bestPrice: 114 });
+
+    expect(captureRateOf(late)).toBeCloseTo(8 / 12, 10);
+  });
+});
+
+describe('the move that was on offer', () => {
+  const funded = deposit(500, '2026-01-01T09:00:00.000Z');
+  const at = '2026-01-03T09:00:00.000Z';
+
+  it('runs from the entry actually filled to the Best Price', () => {
+    const trade = deriveState([
+      funded,
+      planCreated({ at: '2026-01-02T09:00:00.000Z' }),
+      positionOpened(at),
+      positionClosed({ at, entryPrice: 102, exitPrice: 110, bestPrice: 114 }),
+    ]).trades[0];
+
+    expect(availableMoveOf(trade)).toBeCloseTo(12, 10);
+  });
+
+  it('counts a short’s move downward, the way the Trade was taken', () => {
+    const short = deriveState([
+      funded,
+      planCreated({
+        at: '2026-01-02T09:00:00.000Z',
+        direction: 'short',
+        stopPrice: 104,
+        liquidationPrice: 120,
+      }),
+      positionOpened(at),
+      positionClosed({ at, exitPrice: 90, bestPrice: 86, exitReason: 'take-profit hit' }),
+    ]).trades[0];
+
+    expect(availableMoveOf(short)).toBeCloseTo(14, 10);
+  });
+
+  it('is nothing when the price never traded the right side of the entry', () => {
+    const straightDown = deriveState([
+      funded,
+      planCreated({ at: '2026-01-02T09:00:00.000Z' }),
+      positionOpened(at),
+      positionClosed({ at, exitPrice: 96, bestPrice: 100, exitReason: 'stop hit' }),
+    ]).trades[0];
+
+    expect(availableMoveOf(straightDown)).toBe(0);
   });
 });

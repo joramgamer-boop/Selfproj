@@ -9,9 +9,11 @@ import type { DurableStorage } from './storage/durability';
 import type { TradeTrackerEvent } from './core/events';
 import {
   deposit,
+  planAbandoned,
   planCreated,
   positionClosed,
   positionOpened,
+  stopMoved,
   withdrawal,
 } from './test/events';
 import { toDateTimeInput } from './format';
@@ -899,6 +901,156 @@ describe('the Drawdown tripwire', () => {
           violations: [{ ruleId: 'drawdown-review', reason: 'Read it on the way in.' }],
         }),
       ),
+    );
+  });
+});
+
+describe('the Trade log', () => {
+  const funded = deposit(500, '2026-01-01T09:00:00.000Z');
+  const openedAt = '2026-01-03T09:00:00.000Z';
+
+  /** A winner closed on the 4th, then a Plan skipped on the 6th. */
+  const history = () => [
+    funded,
+    planCreated({ at: '2026-01-02T09:00:00.000Z', id: 'plan-1' }),
+    positionOpened(openedAt, 'plan-1'),
+    positionClosed({
+      at: '2026-01-04T09:00:00.000Z',
+      planId: 'plan-1',
+      openedAt,
+      exitPrice: 110,
+      bestPrice: 114,
+      fees: 1,
+    }),
+    planCreated({ at: '2026-01-05T09:00:00.000Z', id: 'plan-2' }),
+    planAbandoned({ at: '2026-01-06T09:00:00.000Z', planId: 'plan-2' }),
+  ];
+
+  /** The rows of the log, newest first, as they stand on screen. */
+  async function logRows() {
+    const log = await screen.findByRole('region', { name: /trade log/i });
+    return within(log).getAllByRole('listitem', { name: /trade|abandoned plan/i });
+  }
+
+  it('scrolls the whole history — Trades and Abandoned Plans alike — newest first', async () => {
+    renderApp(history());
+
+    const rows = await logRows();
+    expect(rows[0]).toHaveAttribute('aria-label', expect.stringMatching(/^Abandoned Plan/));
+    expect(rows[0]).toHaveTextContent(/price ran away/i);
+    expect(rows[1]).toHaveAttribute('aria-label', expect.stringMatching(/^Trade/));
+  });
+
+  it('says what a Trade came to in R, what it kept, and how it ended', async () => {
+    renderApp(history());
+
+    const [, trade] = await logRows();
+    // $24 net on $10 of Risk, having kept ten of the fourteen dollars on offer.
+    expect(trade).toHaveTextContent('+2.40R');
+    expect(trade).toHaveTextContent('71%');
+    expect(trade).toHaveTextContent('$10.00');
+    expect(trade).toHaveTextContent(/take-profit hit/i);
+  });
+
+  it('shows the Capture Rate on a loser too, so a round-trip is visible at a glance', async () => {
+    renderApp([
+      funded,
+      planCreated({ at: '2026-01-02T09:00:00.000Z' }),
+      positionOpened(openedAt),
+      positionClosed({
+        at: '2026-01-04T09:00:00.000Z',
+        openedAt,
+        exitPrice: 96,
+        bestPrice: 108,
+        fees: 0,
+        exitReason: 'stop hit',
+      }),
+    ]);
+
+    const [roundTrip] = await logRows();
+    expect(roundTrip).toHaveTextContent('-1.00R');
+    // Eight dollars were on offer and four were lost: the whole move handed
+    // back, and then the Risk on top of it.
+    expect(roundTrip).toHaveTextContent('-50%');
+  });
+
+  it('flags a Violation and above-default Risk on the row itself', async () => {
+    renderApp([
+      funded,
+      planCreated({
+        at: '2026-01-02T09:00:00.000Z',
+        riskFraction: 0.03,
+        stopPrice: 85,
+        violations: [{ ruleId: 'liquidation-buffer', reason: 'The level is real.' }],
+      }),
+      positionOpened(openedAt),
+      positionClosed({ at: '2026-01-04T09:00:00.000Z', openedAt }),
+    ]);
+
+    const [trade] = await logRows();
+    expect(trade).toHaveTextContent(/above default risk/i);
+    expect(trade).toHaveTextContent(/violation/i);
+    expect(trade).toHaveTextContent(/the level is real/i);
+  });
+
+  it('opens one Trade on everything logged against it, notes and Stop moves and all', async () => {
+    renderApp([
+      funded,
+      planCreated({ at: '2026-01-02T09:00:00.000Z' }),
+      positionOpened(openedAt),
+      stopMoved({ at: '2026-01-03T11:00:00.000Z', stopPrice: 100 }),
+      positionClosed({
+        at: '2026-01-04T09:00:00.000Z',
+        openedAt,
+        notes: 'Took the second push.',
+        scaledOut: true,
+      }),
+    ]);
+    const [trade] = await logRows();
+
+    // Nothing of the detail is on the row until it is asked for.
+    expect(trade).not.toHaveTextContent(/took the second push/i);
+
+    await userEvent.setup().click(within(trade).getByRole('button', { name: /everything logged/i }));
+
+    expect(trade).toHaveTextContent(/took the second push/i);
+    expect(trade).toHaveTextContent(/scaled out/i);
+    // Where the Stop was trailed to, beside the one 1R stays fixed at.
+    expect(trade).toHaveTextContent('100');
+    expect(trade).toHaveTextContent('114');
+    expect(trade).toHaveTextContent('$25.00');
+  });
+
+  it('reads a Trade stopped out at breakeven as the 0R it was', async () => {
+    // The case ADR-0001 keeps 1R fixed to the original Stop for: the Stop was
+    // trailed to the entry and hit there. It is neither a win nor a loss, and
+    // a signed "+0.00R" would file it under the first.
+    renderApp([
+      funded,
+      planCreated({ at: '2026-01-02T09:00:00.000Z' }),
+      positionOpened(openedAt),
+      stopMoved({ at: '2026-01-03T11:00:00.000Z', stopPrice: 100 }),
+      positionClosed({
+        at: '2026-01-04T09:00:00.000Z',
+        openedAt,
+        exitPrice: 100,
+        bestPrice: 104,
+        fees: 0,
+        exitReason: 'stop hit',
+      }),
+    ]);
+
+    const [breakeven] = await logRows();
+    expect(breakeven).toHaveTextContent('0.00R');
+    expect(breakeven).not.toHaveTextContent('+0.00R');
+  });
+
+  it('reports no performance statistics, whatever the log holds', async () => {
+    renderApp(history());
+    await logRows();
+
+    expect(document.body.textContent).not.toMatch(
+      /win rate|expectancy|average|avg R|equity curve|trades logged/i,
     );
   });
 });

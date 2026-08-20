@@ -2,8 +2,8 @@ import { useState, type ChangeEvent, type ChangeEventHandler } from 'react';
 import type { Clock } from '../core/clock';
 import type { ClosePosition } from '../core/commands';
 import type { Position } from '../core/state';
-import { EXIT_REASONS, type ExitReason } from '../core/trade';
-import { fromDateTimeInput, toDateTimeInput } from '../format';
+import { EXIT_REASONS } from '../core/trade';
+import { formatExitReason, fromDateTimeInput, toDateTimeInput } from '../format';
 import type { RecordResult } from '../useTradeTracker';
 import { useSubmission } from '../useSubmission';
 import Field from './Field';
@@ -13,14 +13,6 @@ interface ClosePositionFormProps {
   clock: Clock;
   onClose: (command: ClosePosition) => Promise<RecordResult>;
 }
-
-const reasonLabels: Record<ExitReason, string> = {
-  'stop hit': 'Stop hit',
-  'manual exit in profit': 'Manual exit in profit',
-  'manual exit at a loss': 'Manual exit at a loss',
-  'take-profit hit': 'Take-profit hit',
-  liquidated: 'Liquidated',
-};
 
 const blank = { exitPrice: '', fees: '', bestPrice: '', exitReason: '', notes: '' };
 
@@ -115,7 +107,7 @@ export default function ClosePositionForm({ position, clock, onClose }: ClosePos
             <option value="">Choose…</option>
             {EXIT_REASONS.map((reason) => (
               <option key={reason} value={reason}>
-                {reasonLabels[reason]}
+                {formatExitReason(reason)}
               </option>
             ))}
           </select>

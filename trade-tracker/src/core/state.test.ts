@@ -103,7 +103,7 @@ describe('a Plan on the record', () => {
         oneR: 10,
         aboveDefaultRisk: false,
         status: 'planned',
-        abandonReason: null,
+        abandonment: null,
         violations: [],
       },
     ]);
@@ -278,6 +278,7 @@ describe('closing a Position into a Trade', () => {
         notes: '',
         grossPnl: 25,
         realizedPnl: 24,
+        stopMoves: [],
       },
     ]);
   });
@@ -417,12 +418,21 @@ describe('abandoning a Plan', () => {
   it('marks the Plan abandoned, for the reason it was skipped for', () => {
     expect(deriveState(skipped).plans[0]).toMatchObject({
       status: 'abandoned',
-      abandonReason: 'price ran away',
+      abandonment: { reason: 'price ran away' },
     });
   });
 
   it('leaves a Plan nobody skipped without a reason', () => {
-    expect(deriveState([funded, planned]).plans[0].abandonReason).toBeNull();
+    expect(deriveState([funded, planned]).plans[0].abandonment).toBeNull();
+  });
+
+  it('stamps it with when it was skipped, not when it was sized', () => {
+    // The log reads in the order things ended, and a Plan sized in the morning
+    // and skipped at night ended at night.
+    expect(deriveState(skipped).plans[0].abandonment).toEqual({
+      at: abandonedAt,
+      reason: 'price ran away',
+    });
   });
 
   it('keeps the Abandoned Plan on the record, figures and all', () => {
@@ -576,6 +586,26 @@ describe('moving the Stop on an open Position', () => {
     ]);
 
     expect(state.trades[0].plan.violations).toEqual([violation]);
+  });
+
+  it('carries every move on through to the Trade, so the log can show how it was managed', () => {
+    const state = deriveState([
+      ...live,
+      stopMoved({ at: movedAt, stopPrice: 98 }),
+      stopMoved({ at: '2026-01-03T13:00:00.000Z', stopPrice: 100 }),
+      positionClosed({ at: '2026-01-03T15:00:00.000Z', openedAt }),
+    ]);
+
+    expect(state.trades[0].stopMoves).toEqual([
+      { at: movedAt, stopPrice: 98 },
+      { at: '2026-01-03T13:00:00.000Z', stopPrice: 100 },
+    ]);
+  });
+
+  it('leaves a Trade whose Stop never moved with no moves to show', () => {
+    const state = deriveState([...live, positionClosed({ at: '2026-01-03T15:00:00.000Z', openedAt })]);
+
+    expect(state.trades[0].stopMoves).toEqual([]);
   });
 
   it('leaves nothing open once the Position it moved the Stop on has closed', () => {

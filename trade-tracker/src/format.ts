@@ -1,6 +1,7 @@
 import { drawdownPercent } from './core/account';
 import type { AbandonReason, Direction } from './core/plan';
 import { riskPercentOf } from './core/risk';
+import type { ExitReason } from './core/trade';
 
 const money = new Intl.NumberFormat('en-US', {
   style: 'currency',
@@ -46,6 +47,67 @@ const abandonReasons: Record<AbandonReason, string> = {
  */
 export function formatAbandonReason(reason: AbandonReason): string {
   return abandonReasons[reason];
+}
+
+const exitReasons: Record<ExitReason, string> = {
+  'stop hit': 'Stop hit',
+  'manual exit in profit': 'Manual exit in profit',
+  'manual exit at a loss': 'Manual exit at a loss',
+  'take-profit hit': 'Take-profit hit',
+  liquidated: 'Liquidated',
+};
+
+/**
+ * How a Position ended, as every screen says it. Shared with the abandon
+ * reasons above for the same reason: the list the close is picked from and the
+ * row that reports it must not come to spell it differently.
+ */
+export function formatExitReason(reason: ExitReason): string {
+  return exitReasons[reason];
+}
+
+/**
+ * A distance between two prices. Printed as a price rather than as money — a
+ * coin quoted at 0.00001234 would round to $0.00 — but rounded to twelve
+ * significant figures first, which is more than any exchange quotes and just
+ * few enough to drop what a subtraction leaves behind: 114 − 100.1 is 13.9,
+ * not 13.899999999999999.
+ */
+export function formatPriceDistance(distance: number): string {
+  return String(Number(distance.toPrecision(12)));
+}
+
+const rMultiple = new Intl.NumberFormat('en-US', {
+  // Signed, except at zero. A log skimmed on a phone is read by the sign
+  // before it is read by the number, and a bare "1.00R" beside a "-1.00R" is
+  // ambiguous at exactly the speed the log is actually reviewed at — but a
+  // Stop trailed to entry and hit there is the 0R that ADR-0001 keeps the
+  // denominator fixed to report, and "+0.00R" would file it under wins.
+  signDisplay: 'exceptZero',
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
+/** What a Trade came to, in the unit every result in the log is compared in. */
+export function formatR(multiple: number): string {
+  return `${rMultiple.format(multiple)}R`;
+}
+
+const captureRate = new Intl.NumberFormat('en-US', {
+  style: 'percent',
+  // Whole percent. The share of a move that was kept is a coarse behavioural
+  // measure — the source notes talk in 55% against 70% — and a tenth here
+  // would be precision the Best Price it divides by does not have.
+  maximumFractionDigits: 0,
+});
+
+/**
+ * The share of the available move a Trade kept. An em dash where there is no
+ * answer: a Trade the price never moved favourably on has no share to report,
+ * and "0%" would read as a verdict on how it was managed.
+ */
+export function formatCaptureRate(rate: number | null): string {
+  return rate === null ? '—' : captureRate.format(rate);
 }
 
 /**

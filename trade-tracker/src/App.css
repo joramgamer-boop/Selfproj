@@ -232,7 +232,8 @@
 }
 
 .sizer__heading,
-.plans__heading {
+.plans__heading,
+.log__heading {
   margin: 0;
   font-size: 0.75rem;
   letter-spacing: 0.1em;
@@ -443,7 +444,7 @@
   color: var(--ink-dim);
 }
 
-.plan__flag {
+.risk-flag {
   margin: 0.375rem 0 0;
   font-size: 0.75rem;
   font-weight: 600;
@@ -661,14 +662,6 @@
   font-size: 0.875rem;
 }
 
-.plan__outcome {
-  margin: 0.375rem 0 0;
-  font-size: 0.75rem;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--ink-dim);
-}
-
 .plan__open {
   display: flex;
   flex-direction: column;
@@ -690,12 +683,6 @@
 
 .plan__take:disabled {
   opacity: 0.6;
-}
-
-/* A skipped Plan. Dimmed rather than hidden: it stays in the log for good, but
-   it is not a result and must not read like one beside a Trade. */
-.plan--abandoned {
-  opacity: 0.68;
 }
 
 /* Skipping, one tap away and quieter than taking the trade. The app has no
@@ -922,4 +909,159 @@
   font-size: 0.75rem;
   font-weight: 600;
   color: var(--warn);
+}
+
+/* The Trade log: the history, read rather than acted on. */
+.log__empty {
+  margin: 0;
+  color: var(--ink-dim);
+}
+
+.log__rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.log__row {
+  padding: 0.75rem 0;
+  border-top: 1px solid var(--edge);
+  font-variant-numeric: tabular-nums;
+}
+
+/* A skipped Plan. Dimmed rather than hidden: it stays in the log for good, but
+   it is not a result and must not read like one beside a Trade. */
+.log__row--abandoned {
+  opacity: 0.68;
+}
+
+/* The result closes the headline, where 1R closes a Plan's: the Trade is over,
+   and what it came to is the thing being reviewed. */
+.log__result {
+  margin-left: auto;
+  font-size: 1.125rem;
+}
+
+.log__result--up {
+  color: var(--accent);
+}
+
+.log__result--down {
+  color: var(--alarm);
+}
+
+/* Breakeven is neither, and must not borrow the colour of either. */
+.log__result--even {
+  color: var(--ink-dim);
+}
+
+.log__outcome {
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.log__more {
+  margin-top: 0.5rem;
+  padding: 0;
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+  background: none;
+  border: none;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+/* Everything logged against one Trade. Inset and quieter than the row above
+   it, so the thing that was skimmed stays the thing that leads. */
+.detail {
+  margin-top: 0.625rem;
+  padding: 0.75rem;
+  background: var(--panel);
+  border-radius: 0.5rem;
+}
+
+.detail__fields {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr));
+  gap: 0.625rem 0.75rem;
+}
+
+.detail__figure {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.detail__figure dt {
+  font-size: 0.6875rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+
+.detail__figure dd {
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* A corrected stamp says so, because it is the difference between a hold
+   duration that can be trusted and one that cannot. */
+.detail__edited {
+  font-size: 0.6875rem;
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--warn);
+}
+
+.detail__flag {
+  margin: 0.75rem 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  color: var(--ink-dim);
+}
+
+.detail__stops,
+.detail__notes {
+  margin-top: 0.75rem;
+}
+
+.detail__label {
+  margin: 0 0 0.25rem;
+  font-size: 0.6875rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+
+.detail__moves {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.detail__move {
+  display: flex;
+  gap: 0.5rem;
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.detail__when {
+  color: var(--ink-dim);
+}
+
+.detail__prose {
+  margin: 0;
+  font-size: 0.875rem;
 }

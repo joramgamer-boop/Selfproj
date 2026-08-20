@@ -58,11 +58,17 @@ export interface Plan extends PlanInputs {
   readonly aboveDefaultRisk: boolean;
   readonly status: PlanStatus;
   /**
-   * Why the Plan was skipped, or null while it was not. Set only alongside
-   * the abandoned status, so a row that says it was skipped always says what
-   * for — the accumulating "price ran away" is the whole point of the field.
+   * The skip, or null while there was not one. One field rather than a reason
+   * beside a stamp, so a row that says it was skipped always says when and
+   * what for — the accumulating "price ran away" is the whole point of it, and
+   * a pair that cannot come apart needs no comment asking that it be kept
+   * together.
+   *
+   * The stamp is separate from `at`, which is when the Plan was sized: the
+   * log reads in the order things ended, and a Plan sized in the morning and
+   * skipped at night ended at night.
    */
-  readonly abandonReason: AbandonReason | null;
+  readonly abandonment: Abandonment | null;
   /**
    * Every Rule overridden anywhere in this Plan's life — sizing it, taking it
    * live — in the order the overrides happened. Unlike the figures above this
@@ -70,6 +76,12 @@ export interface Plan extends PlanInputs {
    * Trade it closes as carries the lot.
    */
   readonly violations: readonly Violation[];
+}
+
+/** A Plan sized and then not taken, and when the trader said so. */
+export interface Abandonment {
+  readonly at: string;
+  readonly reason: AbandonReason;
 }
 
 /** One time the Stop was moved while the Position was live. */
@@ -108,6 +120,15 @@ export interface Trade extends ClosingRecord {
   readonly grossPnl: number;
   /** Net of fees. This, and only this, is what moved the Balance. */
   readonly realizedPnl: number;
+  /**
+   * Where the Stop was moved to while the Position was live, in order. Carried
+   * onto the Trade rather than left behind with the Position, because how a
+   * Trade was managed is exactly what the log is read for — and because a
+   * Stop trailed to breakeven is the explanation for an R-multiple that would
+   * otherwise look like an unexplained early exit. It changes no figure here:
+   * 1R stays fixed to the Plan's original Stop (ADR-0001).
+   */
+  readonly stopMoves: readonly StopMove[];
 }
 
 export interface DerivedState {
@@ -159,9 +180,9 @@ export const emptyState: DerivedState = {
 
 /** A Plan being folded, before it is known how the Plan turned out. */
 interface PlanRecord {
-  readonly figures: Omit<Plan, 'status' | 'violations' | 'abandonReason'>;
+  readonly figures: Omit<Plan, 'status' | 'violations' | 'abandonment'>;
   status: PlanStatus;
-  abandonReason: AbandonReason | null;
+  abandonment: Abandonment | null;
   /** Appended to as the log goes on, so a snapshot taken at the close holds
    *  the Violations from every step, not only from sizing. */
   readonly violations: Violation[];
@@ -201,7 +222,7 @@ export function deriveState(events: readonly TradeTrackerEvent[]): DerivedState 
   const asPlan = (record: PlanRecord): Plan => ({
     ...record.figures,
     status: record.status,
-    abandonReason: record.abandonReason,
+    abandonment: record.abandonment,
     violations: [...record.violations],
   });
 
@@ -255,7 +276,7 @@ export function deriveState(events: readonly TradeTrackerEvent[]): DerivedState 
         }
         records.set(event.id, {
           status: 'planned',
-          abandonReason: null,
+          abandonment: null,
           // Recorded, never re-judged: whether these Rules would still block
           // this Plan today is beside the point — they blocked it then, and
           // the trader said why.
@@ -290,7 +311,7 @@ export function deriveState(events: readonly TradeTrackerEvent[]): DerivedState 
           );
         }
         record.status = 'abandoned';
-        record.abandonReason = event.reason;
+        record.abandonment = { at: event.at, reason: event.reason };
         // No Ledger entry and no Trade, deliberately: a Plan that was never
         // taken moved no money, and letting it near either would put a
         // non-event into the Balance and into every statistic folded from
@@ -365,6 +386,9 @@ export function deriveState(events: readonly TradeTrackerEvent[]): DerivedState 
           notes: event.notes,
           grossPnl: settlement.grossPnl,
           realizedPnl: settlement.realizedPnl,
+          // Taken off the Position as it closes, since that is the last moment
+          // the moves exist anywhere: the Position itself is about to go.
+          stopMoves: position.stopMoves,
         });
         ledger.push({
           seq,
@@ -409,6 +433,17 @@ export function deriveState(events: readonly TradeTrackerEvent[]): DerivedState 
     trades,
     riskDefault,
   };
+}
+
+/**
+ * The Plans still waiting on a decision — take it, or say why not.
+ *
+ * The complement of the Trade log: everything else has either ended, and is on
+ * the log, or is live, and has the Position panel. Between the two, nothing a
+ * Plan can be is on the screen twice.
+ */
+export function plansAwaitingADecision(state: DerivedState): readonly Plan[] {
+  return state.plans.filter((plan) => plan.status === 'planned');
 }
 
 function planOf(

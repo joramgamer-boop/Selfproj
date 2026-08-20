@@ -452,7 +452,10 @@ describe('abandoning a Plan', () => {
 
     if (evaluation.outcome !== 'append') throw new Error('expected the Plan to be abandonable');
     const state = deriveState([funded, planned, ...evaluation.events]);
-    expect(state.plans[0]).toMatchObject({ status: 'abandoned', abandonReason: 'price ran away' });
+    expect(state.plans[0]).toMatchObject({
+      status: 'abandoned',
+      abandonment: { reason: 'price ran away' },
+    });
     expect(state.balance).toBe(500);
     expect(state.trades).toEqual([]);
   });

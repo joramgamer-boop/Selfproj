@@ -8,9 +8,12 @@ import PlanSizer from './components/PlanSizer';
 import PositionPanel from './components/PositionPanel';
 import RiskDefaultSetting from './components/RiskDefaultSetting';
 import StorageNotice from './components/StorageNotice';
+import TradeLog from './components/TradeLog';
 import WithdrawalForm from './components/WithdrawalForm';
 import type { Clock } from './core/clock';
 import { withdrawalWarnings } from './core/commands';
+import { tradeLog } from './core/log';
+import { plansAwaitingADecision } from './core/state';
 import type { IdSource } from './core/ids';
 import type { DurableStorage } from './storage/durability';
 import type { EventStore } from './storage/eventStore';
@@ -29,6 +32,9 @@ export default function App({ store, clock, ids, durableStorage }: AppProps) {
   const context = useMemo(() => ({ clock, ids }), [clock, ids]);
   const { status, state, record } = useTradeTracker(store, context);
   const durability = useDurability(durableStorage);
+  // Derived where every other figure is: by folding the log, in the core.
+  const log = useMemo(() => tradeLog(state), [state]);
+  const waiting = useMemo(() => plansAwaitingADecision(state), [state]);
 
   if (status === 'loading') {
     return (
@@ -66,7 +72,11 @@ export default function App({ store, clock, ids, durableStorage }: AppProps) {
         />
       )}
       <PlanSizer balance={state.balance} riskDefault={state.riskDefault} onCreate={record} />
-      <PlanList plans={state.plans} onOpen={record} onAbandon={record} />
+      <PlanList plans={waiting} onOpen={record} onAbandon={record} />
+      {/* Beneath the Plans awaiting a decision, because it is what gets read
+          rather than acted on — and above the account, because a review starts
+          with the Trades and only then asks what they did to the Balance. */}
+      <TradeLog rows={log} />
       <DepositForm onRecord={(amount) => record({ type: 'RecordDeposit', amount })} />
       <WithdrawalForm
         warningsFor={(amount) => withdrawalWarnings(state, amount)}

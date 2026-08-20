@@ -1,4 +1,5 @@
 import { isPrice, toCents } from './money';
+import type { Direction } from './plan';
 import type { Plan, Trade } from './state';
 import { isExitReason, type ClosingRecord, type ProposedClose } from './trade';
 
@@ -8,6 +9,16 @@ export interface Settlement {
   readonly fees: number;
   /** What actually moved the Balance: gross less fees. Negative on a loser. */
   readonly realizedPnl: number;
+}
+
+/**
+ * How far the price moved in the direction the trade was taken: forward on a
+ * long, backward on a short. One place that knows which way is up, because a
+ * sign flipped in one figure and not another would report a losing short as a
+ * winner and still add up.
+ */
+function favourably(direction: Direction, from: number, to: number): number {
+  return direction === 'long' ? to - from : from - to;
 }
 
 export type Close =
@@ -26,10 +37,7 @@ export function solveSettlement(plan: Plan, closing: ClosingRecord): Settlement 
   // costs captured move — it does not quietly resize the risk that was
   // committed (ADR-0001).
   const size = plan.notional / plan.entryPrice;
-  const move =
-    plan.direction === 'long'
-      ? closing.exitPrice - closing.entryPrice
-      : closing.entryPrice - closing.exitPrice;
+  const move = favourably(plan.direction, closing.entryPrice, closing.exitPrice);
 
   const grossPnl = toCents(size * move);
   const fees = toCents(closing.fees);
@@ -113,4 +121,41 @@ function wrongSideBestPrice(plan: Plan, proposed: ProposedClose): string | null 
     return 'Best Price is the lowest the price reached — on a short it cannot sit above the entry or the exit.';
   }
   return null;
+}
+
+/**
+ * Of the move that was on offer while the Position was open, the share the
+ * Trade actually kept: `(exit − entry) ÷ (Best Price − entry)`, in whichever
+ * direction the Trade was taken. The one lever the source notes identify as
+ * raising returns and lowering drawdown at the same time.
+ *
+ * Measured from the entry actually filled rather than the one planned, for the
+ * same reason the P&L is: entry lag is a leak, and it belongs to the Trade
+ * rather than to the Plan that preceded it.
+ *
+ * A loser reads negative, because the move it kept was backwards. That is why
+ * Best Price is required on losers as well as winners — without it a
+ * round-trip, which is a −1R with a distant Best Price, could not be told
+ * apart from a trade that never worked at all.
+ */
+export function captureRateOf(trade: Trade): number | null {
+  const available = availableMoveOf(trade);
+  // No move was ever available, so there is no share of one to report. Zero
+  // would be a verdict on how the Trade was managed, and there is none to give.
+  if (available <= 0) return null;
+
+  const kept = favourably(trade.plan.direction, trade.entryPrice, trade.exitPrice);
+
+  // Unrounded, exactly as the R-multiple above is, and for the same reason.
+  return kept / available;
+}
+
+/**
+ * The move that was on offer while the Position was open: from the entry
+ * actually filled to the Best Price. The denominator of the Capture Rate, and
+ * worth reading on its own — it is what separates a round-trip, which handed
+ * back a large available move, from a trade that never worked at all.
+ */
+export function availableMoveOf(trade: Trade): number {
+  return favourably(trade.plan.direction, trade.entryPrice, trade.bestPrice);
 }
