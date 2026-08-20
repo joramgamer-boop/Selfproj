@@ -140,3 +140,55 @@ export function exported(at: string, format: ExportFormat = 'json'): TradeTracke
 export function restored(at: string): TradeTrackerEvent {
   return { type: 'Restored', at };
 }
+
+/**
+ * One day apart from the next, from 2 January 2026 — a day after the Deposit
+ * every fixture starts from — so a log reads in the order it happened.
+ */
+export function day(index: number): string {
+  return new Date(Date.UTC(2026, 0, 2 + index, 9)).toISOString();
+}
+
+/**
+ * A Plan sized, taken and closed. Entry, Stop and Risk are the ones above —
+ * 100, 96 and 2% — which is what makes a fixture built from these workable by
+ * hand: the Notional is solved from the Risk, so with no fees an R-multiple is
+ * exactly the move over the 4-point Stop distance, whatever the Balance was.
+ */
+export interface Closed {
+  readonly exitPrice: number;
+  readonly bestPrice: number;
+  readonly fees?: number;
+  readonly violations?: Violation[];
+  /** A Deposit recorded before this Plan is sized. Holds 1R still across a
+   *  fixture, where compounding would otherwise make the arithmetic unreadable. */
+  readonly toppedUpBy?: number;
+}
+
+export function closedTrades(...trades: readonly Closed[]): TradeTrackerEvent[] {
+  return trades.flatMap((closed, index): TradeTrackerEvent[] => {
+    const planId = `plan-${index + 1}`;
+    const at = day(index);
+    return [
+      ...(closed.toppedUpBy === undefined ? [] : [deposit(closed.toppedUpBy, at)]),
+      planCreated({ at, id: planId, violations: closed.violations ?? [] }),
+      positionOpened(at, planId),
+      positionClosed({
+        at,
+        planId,
+        exitPrice: closed.exitPrice,
+        bestPrice: closed.bestPrice,
+        fees: closed.fees ?? 0,
+      }),
+    ];
+  });
+}
+
+/**
+ * Trades that came to nothing: closed at the entry with no fees, so each one
+ * leaves the Balance exactly where it was. Where a fixture is about how many
+ * Trades there are rather than what they came to, that is all they need to be.
+ */
+export function breakeven(count: number): Closed[] {
+  return Array.from({ length: count }, () => ({ exitPrice: 100, bestPrice: 100 }));
+}

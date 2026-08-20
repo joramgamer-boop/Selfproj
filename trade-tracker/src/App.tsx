@@ -8,12 +8,14 @@ import PlanList from './components/PlanList';
 import PlanSizer from './components/PlanSizer';
 import PositionPanel from './components/PositionPanel';
 import RiskDefaultSetting from './components/RiskDefaultSetting';
+import StatisticsPanel from './components/StatisticsPanel';
 import StorageNotice from './components/StorageNotice';
 import TradeLog from './components/TradeLog';
 import WithdrawalForm from './components/WithdrawalForm';
 import type { Clock } from './core/clock';
 import { withdrawalWarnings } from './core/commands';
 import { tradeLog } from './core/log';
+import { statisticsOf } from './core/statistics';
 import { plansAwaitingADecision } from './core/state';
 import type { IdSource } from './core/ids';
 import { createBackups } from './backups';
@@ -45,6 +47,9 @@ export default function App({ store, clock, ids, durableStorage, downloads }: Ap
   // Derived where every other figure is: by folding the log, in the core.
   const log = useMemo(() => tradeLog(state), [state]);
   const waiting = useMemo(() => plansAwaitingADecision(state), [state]);
+  // Worked out at every count, and shown at 30 (ADR-0002). The gate is the
+  // panel's, not the fold's.
+  const statistics = useMemo(() => statisticsOf(state), [state]);
   // One capability rather than three props: looking at a screenshot, putting
   // one on, and taking one off all travel down to the same Trade detail.
   const evidence = useMemo<EvidenceActions>(
@@ -101,6 +106,10 @@ export default function App({ store, clock, ids, durableStorage, downloads }: Ap
         backupDue={state.backupDue}
         backups={backups}
       />
+      {/* Directly above the log it is a reading of, so the figures and the rows
+          they came from are reviewed in one place — and below the sizer,
+          because none of this is meant to be consulted while sizing a trade. */}
+      <StatisticsPanel statistics={statistics} />
       {/* Beneath the Plans awaiting a decision, because it is what gets read
           rather than acted on — and above the account, because a review starts
           with the Trades and only then asks what they did to the Balance. */}

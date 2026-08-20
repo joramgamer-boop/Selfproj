@@ -1280,3 +1280,123 @@
   font-size: 0.8125rem;
   color: var(--alarm);
 }
+
+/* What the log adds up to. A panel like the Backup's, because until 30 Trades
+   have closed it holds one line — and that line is the whole of it. */
+.stats {
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+  padding: 0.875rem 1rem;
+  background: var(--panel);
+  border: 1px solid var(--edge);
+  border-radius: 0.75rem;
+}
+
+.stats__heading {
+  margin: 0;
+  font-size: 0.75rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+
+.stats__count {
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.stats__why {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--ink-dim);
+}
+
+.stats__figures {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr));
+  gap: 0.625rem 0.75rem;
+}
+
+.stats__figure {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.stats__figure dt {
+  font-size: 0.6875rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+
+.stats__figure dd {
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Deliberately unscaled and unlabelled: the shape of the account, with every
+   figure worth a number in the list above it. */
+.stats__curve {
+  width: 100%;
+  height: 4.5rem;
+  overflow: visible;
+}
+
+.stats__curve polyline {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+}
+
+.stats__compliance {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.stats__compliance caption {
+  margin-bottom: 0.375rem;
+  font-size: 0.6875rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+  text-align: left;
+}
+
+.stats__compliance th,
+.stats__compliance td {
+  padding: 0.375rem 0.25rem;
+  text-align: right;
+  border-bottom: 1px solid var(--edge);
+}
+
+.stats__compliance thead th {
+  font-size: 0.6875rem;
+  font-weight: 400;
+  color: var(--ink-dim);
+}
+
+.stats__compliance tbody th {
+  text-align: left;
+  font-weight: 600;
+}
+
+/* Named for a screen reader, blank on screen: the corner of a table where the
+   row headings meet the column headings has nothing to say to either. */
+.stats__hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

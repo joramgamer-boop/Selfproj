@@ -130,6 +130,28 @@ tell an early exit apart from a round-trip.
 `(win rate × avg win R) − (loss rate × avg loss R)`, over Trades only. The number
 that decides whether the account grows.
 
+The average loss is written as a magnitude here; every screen shows it carrying
+its sign, so the subtraction reads as an addition of a negative number. Same
+arithmetic, and a −1.20R that says what it is.
+
+### Win rate
+
+Winners as a share of every Trade. A breakeven sits in the denominator and in
+neither average: a Stop trailed to entry and hit there won nothing and lost
+nothing, and filing it under either would flatter or damn the edge.
+
+Not a percentage of anything but Trades — an Abandoned Plan is not a loss.
+
+### Fee drag
+
+Every dollar of fees over every dollar of Risk taken: the share of an average 1R
+the exchange kept, and the amount Expectancy has to clear before the account
+grows at all.
+
+Against the Risk rather than the Notional. 1R is the unit every result is in, and
+a drag quoted against a Notional many times the Risk reads as a fraction of what
+it costs.
+
 ## The account
 
 ### Ledger
@@ -172,6 +194,10 @@ The fall from Peak Balance to current Balance, as a percentage. At 20% the
 Tripwire fires. It is measured against the peak, not against the Base — an
 account still up on what was deposited can be well into a Drawdown.
 
+**Max Drawdown** is the deepest one the account ever ran, on the same Ledger and
+by the same measure — so a Withdrawal deepens it, because a Withdrawal really did
+take the Balance down.
+
 ### Tripwire
 
 The Rule that pauses new Plans at a 20% Drawdown until a log review is
@@ -179,6 +205,15 @@ acknowledged. It re-arms: once the Drawdown recovers inside 20%, the next fall
 past it asks again.
 
 The acknowledgement is a recorded event, never a dismissal.
+
+### Equity curve
+
+The Balance through the whole Ledger, in the order it moved. Deposits are in it
+as steps up: it is the account the trader has, not a curve of results with the
+money that funded them left out.
+
+Not a curve of Trades, and never plotted before 30 of them have closed
+(ADR-0002).
 
 ## Discipline
 

@@ -19,6 +19,13 @@ const when = new Intl.DateTimeFormat('en-GB', {
   timeZone: 'UTC',
 });
 
+/**
+ * What every screen prints where a figure has no answer — as against one whose
+ * answer is zero. One spelling, so a Capture Rate that was never available and
+ * an average over no Trades read as the same kind of silence.
+ */
+const NONE = '—';
+
 export function formatMoney(amount: number): string {
   return money.format(amount);
 }
@@ -93,6 +100,15 @@ export function formatR(multiple: number): string {
   return `${rMultiple.format(multiple)}R`;
 }
 
+/**
+ * An average of R-multiples, where there may be none to average. An average of
+ * no Trades is not zero, it is nothing: "+0.00R" against a cohort nothing fell
+ * into would read as an edge that made exactly what it lost.
+ */
+export function formatAverageR(multiple: number | null): string {
+  return multiple === null ? NONE : formatR(multiple);
+}
+
 const captureRate = new Intl.NumberFormat('en-US', {
   style: 'percent',
   // Whole percent. The share of a move that was kept is a coarse behavioural
@@ -107,7 +123,26 @@ const captureRate = new Intl.NumberFormat('en-US', {
  * and "0%" would read as a verdict on how it was managed.
  */
 export function formatCaptureRate(rate: number | null): string {
-  return rate === null ? '—' : captureRate.format(rate);
+  return rate === null ? NONE : captureRate.format(rate);
+}
+
+const percent = new Intl.NumberFormat('en-US', {
+  style: 'percent',
+  // A tenth where a figure has one, and nothing where it does not: a win rate
+  // of 6.9% and a fee drag of 10% are both read at a glance, and '10.0%' is
+  // precision that the twenty-odd Trades under it do not carry.
+  maximumFractionDigits: 1,
+});
+
+/**
+ * A share of something, as the statistics say it: a win rate, a fee drag. An
+ * em dash where there is no share to report — a rate over no Trades at all.
+ *
+ * Drawdown keeps its own path through `drawdownPercent` and does not come
+ * here, because a Rule reads that rounding and this one is only ever read.
+ */
+export function formatPercent(fraction: number | null): string {
+  return fraction === null ? NONE : percent.format(fraction);
 }
 
 /**

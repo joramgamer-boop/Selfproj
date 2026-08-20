@@ -9,7 +9,10 @@ import type { Downloads, ExportFile } from './storage/downloads';
 import type { DurableStorage } from './storage/durability';
 import type { TradeTrackerEvent } from './core/events';
 import {
+  breakeven,
   bytesOf,
+  closedTrades,
+  day,
   deposit,
   evidenceAttached,
   planAbandoned,
@@ -1075,13 +1078,13 @@ describe('the Trade log', () => {
     expect(breakeven).not.toHaveTextContent('+0.00R');
   });
 
-  it('reports no performance statistics, whatever the log holds', async () => {
+  it('totals nothing itself — what the log adds up to is gated on 30 Trades', async () => {
     renderApp(history());
-    await logRows();
+    const log = await screen.findByRole('region', { name: /trade log/i });
 
-    expect(document.body.textContent).not.toMatch(
-      /win rate|expectancy|average|avg R|equity curve|trades logged/i,
-    );
+    // The log reports and never sums. The one place that sums is the
+    // statistics panel, and it is shut until 30 Trades have closed (ADR-0002).
+    expect(log.textContent).not.toMatch(/win rate|expectancy|average|avg R|equity curve/i);
   });
 });
 
@@ -1391,5 +1394,95 @@ describe('backing the log up, and getting it back', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/not a backup/i);
     expect(log).toEqual([]);
+  });
+});
+
+describe('the statistics gate', () => {
+  const funded = deposit(1000, '2026-01-01T09:00:00.000Z');
+  const statistics = () => within(screen.getByRole('region', { name: /^statistics$/i }));
+
+  it('counts the closed Trades toward the 30 the statistics wait for', async () => {
+    renderApp([
+      funded,
+      ...closedTrades({ exitPrice: 108, bestPrice: 110 }, { exitPrice: 96, bestPrice: 100 }),
+      // A skip is in the log for good, and counts toward nothing.
+      planCreated({ at: day(5), id: 'skipped' }),
+      planAbandoned({ at: day(6), planId: 'skipped' }),
+    ]);
+
+    expect(await screen.findByLabelText(/trades logged/i)).toHaveTextContent(
+      '2 / 30 Trades logged',
+    );
+  });
+
+  it('shows nothing about performance at 29 closed Trades', async () => {
+    renderApp([funded, ...closedTrades(...breakeven(29))]);
+
+    expect(await screen.findByLabelText(/trades logged/i)).toHaveTextContent(
+      '29 / 30 Trades logged',
+    );
+    // Nowhere on the screen, not merely nowhere in the panel: each of these is
+    // a figure the log adds up to, and none of them may be rendered from a
+    // sample this short — however the screen is arranged (ADR-0002).
+    const gated = [
+      /win rate/i,
+      /expectancy/i,
+      /average win/i,
+      /average loss/i,
+      /capture rate/i,
+      /fee drag/i,
+      /max drawdown/i,
+    ];
+    for (const figure of gated) {
+      expect(screen.queryByLabelText(figure)).not.toBeInTheDocument();
+    }
+    expect(screen.queryByRole('img', { name: /equity curve/i })).not.toBeInTheDocument();
+  });
+
+  /**
+   * The 30th Trade, and the figures the whole log exists for. Twenty-six that
+   * came to nothing, then the hand-worked four: +2R, +1R, −1R and a breakeven,
+   * with no fees anywhere.
+   */
+  const thirty = [
+    funded,
+    ...closedTrades(
+      ...breakeven(26),
+      { exitPrice: 108, bestPrice: 110 },
+      { exitPrice: 104, bestPrice: 104 },
+      { exitPrice: 96, bestPrice: 100, violations: [{ ruleId: 'liquidation-buffer', reason: 'Went anyway.' }] },
+      { exitPrice: 100, bestPrice: 108 },
+    ),
+  ];
+
+  it('answers the question the log exists for at the 30th Trade', async () => {
+    renderApp(thirty);
+
+    expect(await screen.findByLabelText(/trades logged/i)).toHaveTextContent('30 Trades logged');
+    const panel = statistics();
+    // Every figure the ticket asks for, on screen. What each of them comes to
+    // is settled at seam 1; what this seam is here for is that the gate opened
+    // and the right figure reached the right label.
+    expect(panel.getByLabelText(/win rate/i)).toHaveTextContent('6.7%');
+    expect(panel.getByLabelText(/expectancy per trade/i)).toHaveTextContent('+0.07R');
+    expect(panel.getByLabelText(/average win/i)).toBeInTheDocument();
+    expect(panel.getByLabelText(/average loss/i)).toBeInTheDocument();
+    expect(panel.getByLabelText(/average capture rate/i)).toBeInTheDocument();
+    expect(panel.getByLabelText(/fee drag/i)).toBeInTheDocument();
+    expect(panel.getByLabelText(/max drawdown/i)).toBeInTheDocument();
+    expect(panel.getByRole('img', { name: /equity curve/i })).toBeInTheDocument();
+  });
+
+  it('sets the Trades that broke a Rule beside the ones that did not', async () => {
+    renderApp(thirty);
+    await screen.findByLabelText(/trades logged/i);
+
+    const tradesIn = (name: RegExp) =>
+      within(screen.getByRole('row', { name })).getAllByRole('cell')[0].textContent;
+
+    // The one Trade taken through an overridden Rule, against the twenty-nine
+    // that broke none — each cohort with its own figures beside it.
+    expect(tradesIn(/broke a rule/i)).toBe('1');
+    expect(tradesIn(/broke none/i)).toBe('29');
   });
 });
