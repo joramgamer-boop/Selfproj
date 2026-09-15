@@ -32,6 +32,30 @@ export const someSkills = () => ({
   ],
 });
 
+/** A Projects Section with one Done and one Active Project, both using declared Skills, nothing wrong. */
+export const someProjects = () => ({
+  data: [
+    {
+      id: 'tracker',
+      name: 'Tracker',
+      summary: 'Logs what the engines did.',
+      repoUrl: 'https://github.com/ada-l/tracker',
+      status: 'done',
+      started: '2026-01',
+      ended: '2026-02',
+      skills: ['python', 'tdd'],
+    },
+    {
+      id: 'engine',
+      name: 'Engine',
+      summary: 'Makes things go.',
+      status: 'active',
+      started: '2026-03',
+      skills: ['react'],
+    },
+  ],
+});
+
 /** The one Link a Visitor is invited to use, as `someLinks()` marks it. */
 export const theContactChannel = () => ({
   label: 'LinkedIn',
@@ -45,7 +69,13 @@ export const someLinks = () => ({
 });
 
 /** Every Section with nothing wrong. */
-export const validSections = (): Sections => ({ bio: aBio(), now: aNow(), skills: someSkills(), links: someLinks() });
+export const validSections = (): Sections => ({
+  bio: aBio(),
+  now: aNow(),
+  projects: someProjects(),
+  skills: someSkills(),
+  links: someLinks(),
+});
 
 /** The loader's errors for these Sections; fails the test if it returned a Profile instead. */
 export const errorsOf = (sections: Sections): ContentError[] => {

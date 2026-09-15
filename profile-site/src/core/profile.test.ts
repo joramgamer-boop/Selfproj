@@ -1,5 +1,14 @@
 import { loadProfile, type Sections } from './profile';
-import { aBio, aNow, errorsOf, someLinks, someSkills, theContactChannel, validSections } from '../test/fixtures';
+import {
+  aBio,
+  aNow,
+  errorsOf,
+  someLinks,
+  someProjects,
+  someSkills,
+  theContactChannel,
+  validSections,
+} from '../test/fixtures';
 
 /** The Sections with the Bio replaced, or dropped with `undefined`. */
 const withBio = (bio: Sections['bio']): Sections => ({ ...validSections(), bio });
@@ -9,7 +18,9 @@ const bioWith = (data: Record<string, unknown>) => ({ ...aBio(), data: { ...aBio
 
 describe('the Bio', () => {
   it('becomes the Profile: Display Name from first name and Handle, Tagline and prose as written', () => {
-    expect(loadProfile({ bio: aBio(), now: aNow(), skills: someSkills(), links: someLinks() })).toEqual({
+    expect(
+      loadProfile({ bio: aBio(), now: aNow(), projects: someProjects(), skills: someSkills(), links: someLinks() }),
+    ).toEqual({
       ok: true,
       profile: {
         displayName: 'Ada (ada-l)',
@@ -20,6 +31,34 @@ describe('the Bio', () => {
           prose: 'Studies at a university and expects to graduate in 2028.',
         },
         now: { renders: true, ...aNow().data },
+        projects: {
+          renders: true,
+          list: [
+            {
+              id: 'engine',
+              name: 'Engine',
+              summary: 'Makes things go.',
+              status: 'active',
+              statusLabel: 'Active',
+              started: '2026-03',
+              skills: [{ id: 'react', name: 'React', category: 'framework' }],
+            },
+            {
+              id: 'tracker',
+              name: 'Tracker',
+              summary: 'Logs what the engines did.',
+              repoUrl: 'https://github.com/ada-l/tracker',
+              status: 'done',
+              statusLabel: 'Done',
+              started: '2026-01',
+              ended: '2026-02',
+              skills: [
+                { id: 'python', name: 'Python', category: 'language' },
+                { id: 'tdd', name: 'Test-driven development', category: 'practice' },
+              ],
+            },
+          ],
+        },
         skills: {
           renders: true,
           groups: [
@@ -99,9 +138,15 @@ describe('how the loader reports errors', () => {
   });
 
   it('returns the errors of every Section together, in page order, not one Section at a time', () => {
-    const errors = errorsOf({ bio: undefined, now: { data: { items: [] } }, skills: undefined, links: { data: [] } });
+    const errors = errorsOf({
+      bio: undefined,
+      now: { data: { items: [] } },
+      projects: { data: {} },
+      skills: undefined,
+      links: { data: [] },
+    });
 
-    expect(errors.map((error) => error.section)).toEqual(['bio', 'now', 'skills', 'links']);
+    expect(errors.map((error) => error.section)).toEqual(['bio', 'now', 'projects', 'skills', 'links']);
   });
 
   it('never returns a Profile alongside errors', () => {

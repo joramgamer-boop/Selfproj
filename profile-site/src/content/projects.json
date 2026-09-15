@@ -1,0 +1,23 @@
+[
+  {
+    "id": "trade-tracker",
+    "name": "trade-tracker",
+    "summary": "Local-first trading log with risk sizing, drawdown rules and backups.",
+    "repoUrl": "https://github.com/joramgamer-boop/Selfproj/tree/master/trade-tracker",
+    "status": "active",
+    "started": "2026-08",
+    "skills": ["typescript", "react", "test-driven-development"],
+    "_ownerTodo": "Started is a best guess from git history (first commit 2026-08-17). Finalise it, then delete this note."
+  },
+  {
+    "id": "tic-tac-toe",
+    "name": "tic-tac-toe",
+    "summary": "A practice tic-tac-toe website, built test-first.",
+    "repoUrl": "https://github.com/joramgamer-boop/Selfproj/tree/master/tic-tac-toe",
+    "status": "done",
+    "started": "2026-08",
+    "ended": "2026-08",
+    "skills": ["typescript", "react", "test-driven-development"],
+    "_ownerTodo": "Summary is the agent's wording, and Started and Ended are best guesses from git history (spec 2026-08-03, last change 2026-08-17). Finalise all three, then delete this note."
+  }
+]

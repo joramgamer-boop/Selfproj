@@ -54,14 +54,9 @@ export const nowSchema = z.object({
 
 export type Now = z.infer<typeof nowSchema>;
 
-/**
- * One Link: somewhere the Owner exists elsewhere on the web. The URL must be
- * absolute, with a scheme and a host, so a Visitor never follows a relative
- * or dead one.
- */
-export const linkSchema = z.object({
-  label: requiredText(),
-  url: z
+/** An absolute URL on the web, with a scheme and a host, so a Visitor never follows a relative or dead one. */
+const webUrl = () =>
+  z
     .url({
       protocol: /^https?$/,
       hostname: /.+/,
@@ -72,7 +67,12 @@ export const linkSchema = z.object({
             ? 'must be text'
             : 'must be an absolute URL with a scheme and a host, like https://example.com/you',
     })
-    .trim(),
+    .trim();
+
+/** One Link: somewhere the Owner exists elsewhere on the web, at a web URL. */
+export const linkSchema = z.object({
+  label: requiredText(),
+  url: webUrl(),
   isContactChannel: z.boolean({
     error: (issue) => (issue.input === undefined ? 'is missing' : 'must be true or false'),
   }),
@@ -115,3 +115,44 @@ export type Skill = z.infer<typeof skillSchema>;
 
 /** The Skills Section as its file gives it: a list of Skills, in the order written. */
 export const skillsSchema = z.array(skillSchema, { error: 'must be a list of Skills' });
+
+/** The Statuses a Project can have. Active Projects are shown first; the rest follow by most recent Started. */
+export const PROJECT_STATUSES = ['active', 'paused', 'done', 'archived'] as const;
+
+export type ProjectStatus = (typeof PROJECT_STATUSES)[number];
+
+/** A month written as `YYYY-MM`, so the Owner never has to invent a day. */
+const month = () =>
+  z
+    .string({
+      error: (issue) => (issue.input === undefined ? 'is missing' : 'must be text'),
+    })
+    .regex(/^\d{4}-(?:0[1-9]|1[0-2])$/, { error: 'must be a month in YYYY-MM form, like 2026-08' });
+
+/**
+ * One Project: something the Owner has made or is making. A claim the Owner
+ * chooses to make, never derived from a folder. Whether its Status, Started
+ * and Ended agree, and whether its Skills are declared in the Skills Section,
+ * are rules that span fields and Sections, and live in the loader.
+ */
+export const projectSchema = z.object({
+  id: slug(),
+  name: requiredText(),
+  summary: requiredText(),
+  description: requiredText().optional(),
+  repoUrl: webUrl().optional(),
+  liveUrl: webUrl().optional(),
+  status: z.enum(PROJECT_STATUSES, {
+    error: (issue) => (issue.input === undefined ? 'is missing' : `must be one of ${PROJECT_STATUSES.join(', ')}`),
+  }),
+  started: month(),
+  ended: month().optional(),
+  skills: z.array(slug(), {
+    error: (issue) => (issue.input === undefined ? 'is missing' : 'must be a list of Skill ids'),
+  }),
+});
+
+export type Project = z.infer<typeof projectSchema>;
+
+/** The Projects Section as its file gives it: a list of Projects, in the order written. */
+export const projectsSchema = z.array(projectSchema, { error: 'must be a list of Projects' });

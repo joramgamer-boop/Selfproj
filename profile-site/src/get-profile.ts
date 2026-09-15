@@ -7,9 +7,10 @@ import { loadProfile, type ContentError } from './core/profile';
  * anything is wrong, so nothing invalid ever reaches the live site.
  */
 export async function getProfile() {
-  const [bioEntry, nowEntry, skillsEntry, linksEntry] = await Promise.all([
+  const [bioEntry, nowEntry, projectsEntry, skillsEntry, linksEntry] = await Promise.all([
     getEntry('bio', 'bio'),
     getEntry('now', 'now'),
+    getEntry('projects', 'projects'),
     getEntry('skills', 'skills'),
     getEntry('links', 'links'),
   ]);
@@ -17,6 +18,7 @@ export async function getProfile() {
   const result = loadProfile({
     bio: bioEntry ? { data: bioEntry.data, body: bioEntry.body ?? '' } : undefined,
     now: nowEntry ? { data: nowEntry.data } : undefined,
+    projects: projectsEntry ? { data: projectsEntry.data.projects } : undefined,
     skills: skillsEntry ? { data: skillsEntry.data.skills } : undefined,
     links: linksEntry ? { data: linksEntry.data.links } : undefined,
   });

@@ -1,9 +1,14 @@
 import type { Sections } from './profile';
 import { errorsOf, profileOf, validSections } from '../test/fixtures';
 
-/** The Sections with the Skills Section replaced by the given raw list, or `undefined` for no file. */
+/**
+ * The Sections with the Skills Section replaced by the given raw list, or
+ * `undefined` for no file. The Projects are emptied, so no Project references a
+ * Skill these tests chose not to declare; that rule has its own tests.
+ */
 const withSkills = (skills: unknown): Sections => ({
   ...validSections(),
+  projects: { data: [] },
   skills: skills === undefined ? undefined : { data: skills },
 });
 
