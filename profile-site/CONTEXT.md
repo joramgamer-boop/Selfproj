@@ -80,8 +80,9 @@ Project; both are sentences in the Bio.
 _Avoid_: Tech, stack item, competency, proficiency, certification
 
 **Link**:
-One outbound URL to somewhere the Owner exists elsewhere on the web. Exactly
-one Link is the Contact Channel.
+One outbound URL to somewhere the Owner exists elsewhere on the web. The URL
+is absolute and on the web (`http` or `https`), so a relative path or a
+`mailto:` address is never a Link. Exactly one Link is the Contact Channel.
 _Avoid_: Social, handle, profile link
 
 **Contact Channel**:

@@ -7,10 +7,11 @@ import { loadProfile, type ContentError } from './core/profile';
  * anything is wrong, so nothing invalid ever reaches the live site.
  */
 export async function getProfile() {
-  const bioEntry = await getEntry('bio', 'bio');
+  const [bioEntry, linksEntry] = await Promise.all([getEntry('bio', 'bio'), getEntry('links', 'links')]);
 
   const result = loadProfile({
     bio: bioEntry ? { data: bioEntry.data, body: bioEntry.body ?? '' } : undefined,
+    links: linksEntry ? { data: linksEntry.data.links } : undefined,
   });
   if (!result.ok) throw new Error(formatContentErrors(result.errors));
   // The loader only returns a Profile when the Bio file exists.

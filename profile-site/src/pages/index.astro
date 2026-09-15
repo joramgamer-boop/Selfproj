@@ -19,6 +19,19 @@ const { profile, BioProse } = await getProfile();
         <p>{profile.bio.tagline}</p>
         <BioProse />
       </section>
+      <section id="links" aria-labelledby="links-heading">
+        <h2 id="links-heading">Links</h2>
+        <ul>
+          {
+            profile.links.map((link) => (
+              <li>
+                <a href={link.url}>{link.label}</a>
+                {link.isContactChannel && <span> (contact me here)</span>}
+              </li>
+            ))
+          }
+        </ul>
+      </section>
     </main>
   </body>
 </html>
