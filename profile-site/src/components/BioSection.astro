@@ -1,0 +1,19 @@
+---
+import type { AstroComponentFactory } from 'astro/runtime/server/index.js';
+import type { Profile, SectionView } from '../core/profile';
+
+type Props = {
+  section: SectionView;
+  profile: Profile;
+  /** The Bio's prose, already rendered from Markdown by Astro. */
+  BioProse: AstroComponentFactory;
+};
+
+const { section, profile, BioProse } = Astro.props;
+---
+
+<section id={section.id} aria-labelledby={`${section.id}-heading`}>
+  <h1 id={`${section.id}-heading`}>{profile.displayName}</h1>
+  <p>{profile.bio.tagline}</p>
+  <BioProse />
+</section>

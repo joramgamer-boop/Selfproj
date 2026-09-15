@@ -1,0 +1,24 @@
+---
+import type { Profile, SectionView } from '../core/profile';
+
+type Props = {
+  section: SectionView;
+  profile: Profile;
+};
+
+const { section, profile } = Astro.props;
+---
+
+<section id={section.id} aria-labelledby={`${section.id}-heading`}>
+  <h2 id={`${section.id}-heading`}>{section.title}</h2>
+  <ul>
+    {
+      profile.links.map((link) => (
+        <li>
+          <a href={link.url}>{link.label}</a>
+          {link.isContactChannel && <span> (contact me here)</span>}
+        </li>
+      ))
+    }
+  </ul>
+</section>

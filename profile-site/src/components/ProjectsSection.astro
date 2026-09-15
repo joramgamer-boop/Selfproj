@@ -1,0 +1,49 @@
+---
+import type { Profile, SectionView } from '../core/profile';
+
+type Props = {
+  section: SectionView;
+  profile: Profile;
+};
+
+const { section, profile } = Astro.props;
+---
+
+<section id={section.id} aria-labelledby={`${section.id}-heading`}>
+  <h2 id={`${section.id}-heading`}>{section.title}</h2>
+  <ul>
+    {
+      profile.projects.list.map((project) => (
+        <li>
+          <h3>{project.name}</h3>
+          <p>{project.summary}</p>
+          <p>
+            <span>{project.statusLabel}</span>, <time datetime={project.started}>{project.started}</time>
+            {project.ended && (
+              <>
+                {' '}
+                to <time datetime={project.ended}>{project.ended}</time>
+              </>
+            )}
+          </p>
+          {project.description && <p>{project.description}</p>}
+          {project.repoUrl && (
+            <p>
+              <a href={project.repoUrl}>Repository</a>
+            </p>
+          )}
+          {project.liveUrl && (
+            <p>
+              <a href={project.liveUrl}>Live</a>
+            </p>
+          )}
+          <ul aria-label="Skills used">
+            {project.skills.map((skill) => (
+              <li>{skill.name}</li>
+            ))}
+          </ul>
+        </li>
+      ))
+    }
+  </ul>
+</section>

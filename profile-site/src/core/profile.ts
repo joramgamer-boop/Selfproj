@@ -19,6 +19,21 @@ import {
 /** The Sections the Profile is made of. Fixed by the project, not by content. */
 export type SectionName = 'bio' | 'now' | 'projects' | 'skills' | 'links';
 
+/** One Section as the page names it: its stable id, which anchors point at, and its title, for the nav and the heading. */
+export type SectionView = {
+  id: SectionName;
+  title: string;
+};
+
+/** Every Section, in the order the page reads: who, what now, what made, what able, where found. */
+const SECTIONS: readonly SectionView[] = [
+  { id: 'bio', title: 'Bio' },
+  { id: 'now', title: 'Now' },
+  { id: 'projects', title: 'Projects' },
+  { id: 'skills', title: 'Skills' },
+  { id: 'links', title: 'Links' },
+];
+
 /** One thing wrong with the content, said so the Owner can fix it without reading a schema. */
 export type ContentError = {
   section: SectionName;
@@ -73,6 +88,13 @@ export type ProjectView = Omit<Project, 'skills'> & {
 export type Profile = {
   /** First name plus Handle, never the full legal name. */
   displayName: string;
+  /**
+   * The Sections that render, in the fixed order Bio, Now, Projects, Skills,
+   * Links. Bio and Links are always here; Now, Projects and Skills only when
+   * their `renders` flag is on. The page and its nav follow this list and
+   * read nothing else to decide order or presence.
+   */
+  sections: SectionView[];
   bio: {
     firstName: string;
     handle: string;
@@ -81,7 +103,7 @@ export type Profile = {
     prose: string;
   };
   now: {
-    /** Whether the page shows the Now Section at all: false when there are no Items. */
+    /** Whether the Now Section renders: false when there are no Items. `sections` is derived from this; the page reads that list. */
     renders: boolean;
     /** The date the Owner last changed Now, as written: `YYYY-MM-DD`. */
     updated: string;
@@ -89,13 +111,13 @@ export type Profile = {
     items: NowItem[];
   };
   projects: {
-    /** Whether the page shows the Projects Section at all: false when there are no Projects. */
+    /** Whether the Projects Section renders: false when there are no Projects. `sections` is derived from this; the page reads that list. */
     renders: boolean;
     /** Every Project, Active first, then by most recent Started, ties broken by name. */
     list: ProjectView[];
   };
   skills: {
-    /** Whether the page shows the Skills Section at all: false when there are no Skills. */
+    /** Whether the Skills Section renders: false when there are no Skills. `sections` is derived from this; the page reads that list. */
     renders: boolean;
     /** The Skills grouped by Category, in the fixed order language, framework, tool, practice; empty groups omitted. */
     groups: SkillGroup[];
@@ -133,10 +155,18 @@ export function loadProfile(sections: Sections): LoadResult {
   }
 
   const { firstName, handle } = bio.value;
+  const renders: Record<SectionName, boolean> = {
+    bio: true,
+    now: now.value.renders,
+    projects: projects.value.renders,
+    skills: skills.value.renders,
+    links: true,
+  };
   return {
     ok: true,
     profile: {
       displayName: `${firstName} (${handle})`,
+      sections: SECTIONS.filter((section) => renders[section.id]),
       bio: bio.value,
       now: now.value,
       projects: projects.value,

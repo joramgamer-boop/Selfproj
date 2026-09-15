@@ -1,0 +1,26 @@
+---
+import type { Profile, SectionView } from '../core/profile';
+
+type Props = {
+  section: SectionView;
+  profile: Profile;
+};
+
+const { section, profile } = Astro.props;
+---
+
+<section id={section.id} aria-labelledby={`${section.id}-heading`}>
+  <h2 id={`${section.id}-heading`}>{section.title}</h2>
+  <p>
+    Updated <time datetime={profile.now.updated}>{profile.now.updated}</time>
+  </p>
+  <ul>
+    {
+      profile.now.items.map((item) => (
+        <li>
+          <span>{item.kind}</span>: {item.text}
+        </li>
+      ))
+    }
+  </ul>
+</section>

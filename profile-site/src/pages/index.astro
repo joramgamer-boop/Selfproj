@@ -1,7 +1,22 @@
 ---
 import { getProfile } from '../get-profile';
+import BioSection from '../components/BioSection.astro';
+import NowSection from '../components/NowSection.astro';
+import ProjectsSection from '../components/ProjectsSection.astro';
+import SkillsSection from '../components/SkillsSection.astro';
+import LinksSection from '../components/LinksSection.astro';
 
 const { profile, BioProse } = await getProfile();
+
+// Which markup draws each Section. The view model says which Sections render
+// and in what order; the page only looks up the component for each one.
+const sectionComponents = {
+  bio: BioSection,
+  now: NowSection,
+  projects: ProjectsSection,
+  skills: SkillsSection,
+  links: LinksSection,
+};
 ---
 
 <html lang="en">
@@ -13,99 +28,24 @@ const { profile, BioProse } = await getProfile();
     <meta name="description" content={profile.bio.tagline} />
   </head>
   <body>
+    <nav aria-label="Sections">
+      <ul>
+        {
+          profile.sections.map((section) => (
+            <li>
+              <a href={`#${section.id}`}>{section.title}</a>
+            </li>
+          ))
+        }
+      </ul>
+    </nav>
     <main>
-      <section id="bio" aria-labelledby="bio-heading">
-        <h1 id="bio-heading">{profile.displayName}</h1>
-        <p>{profile.bio.tagline}</p>
-        <BioProse />
-      </section>
       {
-        profile.now.renders && (
-          <section id="now" aria-labelledby="now-heading">
-            <h2 id="now-heading">Now</h2>
-            <p>
-              Updated <time datetime={profile.now.updated}>{profile.now.updated}</time>
-            </p>
-            <ul>
-              {profile.now.items.map((item) => (
-                <li>
-                  <span>{item.kind}</span>: {item.text}
-                </li>
-              ))}
-            </ul>
-          </section>
-        )
+        profile.sections.map((section) => {
+          const Section = sectionComponents[section.id];
+          return <Section section={section} profile={profile} BioProse={BioProse} />;
+        })
       }
-      {
-        profile.projects.renders && (
-          <section id="projects" aria-labelledby="projects-heading">
-            <h2 id="projects-heading">Projects</h2>
-            <ul>
-              {profile.projects.list.map((project) => (
-                <li>
-                  <h3>{project.name}</h3>
-                  <p>{project.summary}</p>
-                  <p>
-                    <span>{project.statusLabel}</span>, <time datetime={project.started}>{project.started}</time>
-                    {project.ended && (
-                      <>
-                        {' '}
-                        to <time datetime={project.ended}>{project.ended}</time>
-                      </>
-                    )}
-                  </p>
-                  {project.description && <p>{project.description}</p>}
-                  {project.repoUrl && (
-                    <p>
-                      <a href={project.repoUrl}>Repository</a>
-                    </p>
-                  )}
-                  {project.liveUrl && (
-                    <p>
-                      <a href={project.liveUrl}>Live</a>
-                    </p>
-                  )}
-                  <ul aria-label="Skills used">
-                    {project.skills.map((skill) => (
-                      <li>{skill.name}</li>
-                    ))}
-                  </ul>
-                </li>
-              ))}
-            </ul>
-          </section>
-        )
-      }
-      {
-        profile.skills.renders && (
-          <section id="skills" aria-labelledby="skills-heading">
-            <h2 id="skills-heading">Skills</h2>
-            {profile.skills.groups.map((group) => (
-              <>
-                <h3>{group.label}</h3>
-                <ul>
-                  {group.skills.map((skill) => (
-                    <li>{skill.name}</li>
-                  ))}
-                </ul>
-              </>
-            ))}
-          </section>
-        )
-      }
-      <section id="links" aria-labelledby="links-heading">
-        <h2 id="links-heading">Links</h2>
-        <ul>
-          {
-            profile.links.map((link) => (
-              <li>
-                <a href={link.url}>{link.label}</a>
-                {link.isContactChannel && <span> (contact me here)</span>}
-              </li>
-            ))
-          }
-        </ul>
-      </section>
     </main>
   </body>
 </html>

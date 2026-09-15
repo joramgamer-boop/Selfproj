@@ -1,0 +1,26 @@
+---
+import type { Profile, SectionView } from '../core/profile';
+
+type Props = {
+  section: SectionView;
+  profile: Profile;
+};
+
+const { section, profile } = Astro.props;
+---
+
+<section id={section.id} aria-labelledby={`${section.id}-heading`}>
+  <h2 id={`${section.id}-heading`}>{section.title}</h2>
+  {
+    profile.skills.groups.map((group) => (
+      <>
+        <h3>{group.label}</h3>
+        <ul>
+          {group.skills.map((skill) => (
+            <li>{skill.name}</li>
+          ))}
+        </ul>
+      </>
+    ))
+  }
+</section>

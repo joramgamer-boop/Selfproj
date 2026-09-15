@@ -12,9 +12,9 @@ Category), 05 (Projects).
 
 Vocabulary: `profile-site/CONTEXT.md`. Spec: `.scratch/profile-site/spec.md`.
 
-- [ ] The view model exposes the ordered list of Sections that render, in the fixed order Bio, Now, Projects, Skills, Links, each with its stable id and display name. Bio and Links are always present; Now, Projects and Skills appear only when their hide flag is off.
-- [ ] The page renders the Sections in that order and nothing else decides order.
-- [ ] A nav at the top of the page lists exactly the rendering Sections as plain anchor links to their ids. No client-side JavaScript; anchors only.
-- [ ] Verified by hand: emptying the Now file removes both the Now Section and its nav entry; restoring it brings both back.
-- [ ] Vitest tests at the seam: the rendering-Sections list is in fixed order regardless of input; a hidden Section is absent from the list; Bio and Links are always present.
-- [ ] Typecheck, lint, tests and build all pass. The page still contains no logic beyond reading the view model.
+- [x] The view model exposes the ordered list of Sections that render, in the fixed order Bio, Now, Projects, Skills, Links, each with its stable id and display name. Bio and Links are always present; Now, Projects and Skills appear only when their hide flag is off.
+- [x] The page renders the Sections in that order and nothing else decides order.
+- [x] A nav at the top of the page lists exactly the rendering Sections as plain anchor links to their ids. No client-side JavaScript; anchors only.
+- [x] Verified by hand: emptying the Now file removes both the Now Section and its nav entry; restoring it brings both back.
+- [x] Vitest tests at the seam: the rendering-Sections list is in fixed order regardless of input; a hidden Section is absent from the list; Bio and Links are always present.
+- [x] Typecheck, lint, tests and build all pass. The page still contains no logic beyond reading the view model.

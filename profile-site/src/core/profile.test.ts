@@ -24,6 +24,13 @@ describe('the Bio', () => {
       ok: true,
       profile: {
         displayName: 'Ada (ada-l)',
+        sections: [
+          { id: 'bio', title: 'Bio' },
+          { id: 'now', title: 'Now' },
+          { id: 'projects', title: 'Projects' },
+          { id: 'skills', title: 'Skills' },
+          { id: 'links', title: 'Links' },
+        ],
         bio: {
           firstName: 'Ada',
           handle: 'ada-l',
