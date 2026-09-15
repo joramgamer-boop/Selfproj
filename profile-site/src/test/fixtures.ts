@@ -11,6 +11,17 @@ export const aBio = () => ({
   body: 'Studies at a university and expects to graduate in 2028.\n',
 });
 
+/** A Now Section with two Items and an Updated date, nothing wrong. */
+export const aNow = () => ({
+  data: {
+    updated: '2026-09-01',
+    items: [
+      { kind: 'learning', text: 'Python and SQL' },
+      { kind: 'reading', text: 'a book about engines' },
+    ],
+  },
+});
+
 /** The one Link a Visitor is invited to use, as `someLinks()` marks it. */
 export const theContactChannel = () => ({
   label: 'LinkedIn',
@@ -24,7 +35,7 @@ export const someLinks = () => ({
 });
 
 /** Every Section with nothing wrong. */
-export const validSections = (): Sections => ({ bio: aBio(), links: someLinks() });
+export const validSections = (): Sections => ({ bio: aBio(), now: aNow(), links: someLinks() });
 
 /** The loader's errors for these Sections; fails the test if it returned a Profile instead. */
 export const errorsOf = (sections: Sections): ContentError[] => {

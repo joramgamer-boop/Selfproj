@@ -25,6 +25,35 @@ export const bioSchema = z.object({
 
 export type Bio = z.infer<typeof bioSchema>;
 
+/** The Kinds a Now Item can have. */
+export const NOW_ITEM_KINDS = ['learning', 'building', 'reading', 'other'] as const;
+
+/** One Now Item: one line of what the Owner is doing, with its Kind. */
+export const nowItemSchema = z.object({
+  kind: z.enum(NOW_ITEM_KINDS, {
+    error: (issue) => (issue.input === undefined ? 'is missing' : `must be one of ${NOW_ITEM_KINDS.join(', ')}`),
+  }),
+  text: requiredText(),
+});
+
+export type NowItem = z.infer<typeof nowItemSchema>;
+
+/**
+ * The Now Section as its file gives it: the Updated date the Owner set by
+ * hand, and the Now Items in the order written. An empty list is valid; the
+ * date is required either way.
+ */
+export const nowSchema = z.object({
+  updated: z.iso.date({
+    error: (issue) => (issue.input === undefined ? 'is missing' : 'must be a date in YYYY-MM-DD form, like 2026-09-15'),
+  }),
+  items: z.array(nowItemSchema, {
+    error: (issue) => (issue.input === undefined ? 'is missing' : 'must be a list of Now Items'),
+  }),
+});
+
+export type Now = z.infer<typeof nowSchema>;
+
 /**
  * One Link: somewhere the Owner exists elsewhere on the web. The URL must be
  * absolute, with a scheme and a host, so a Visitor never follows a relative

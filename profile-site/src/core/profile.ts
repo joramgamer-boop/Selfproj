@@ -1,7 +1,7 @@
-import { bioSchema, linksSchema, type Bio, type Link } from './schemas';
+import { bioSchema, linksSchema, nowSchema, type Bio, type Link, type Now, type NowItem } from './schemas';
 
 /** The Sections the Profile is made of. Fixed by the project, not by content. */
-export type SectionName = 'bio' | 'links';
+export type SectionName = 'bio' | 'now' | 'links';
 
 /** One thing wrong with the content, said so the Owner can fix it without reading a schema. */
 export type ContentError = {
@@ -16,12 +16,16 @@ export type ContentError = {
 /** The Bio as its file gives it: frontmatter not yet validated, and the prose below it. */
 export type BioInput = { data: unknown; body: string };
 
+/** The Now Section as its file gives it: the raw object, not yet validated. */
+export type NowInput = { data: unknown };
+
 /** The Links Section as its file gives it: the raw list, not yet validated. */
 export type LinksInput = { data: unknown };
 
 /** Every Section, as parsed by Astro's collections or built by a test. `undefined` is a missing file. */
 export type Sections = {
   bio: BioInput | undefined;
+  now: NowInput | undefined;
   links: LinksInput | undefined;
 };
 
@@ -35,6 +39,14 @@ export type Profile = {
     tagline: string;
     /** The Bio's body, as Markdown. */
     prose: string;
+  };
+  now: {
+    /** Whether the page shows the Now Section at all: false when there are no Items. */
+    renders: boolean;
+    /** The date the Owner last changed Now, as written: `YYYY-MM-DD`. */
+    updated: string;
+    /** Every Now Item, in the order the Owner wrote them. */
+    items: NowItem[];
   };
   /** Every Link, in the order the Owner wrote them. */
   links: Link[];
@@ -51,10 +63,11 @@ export type LoadResult = { ok: true; profile: Profile } | { ok: false; errors: C
  */
 export function loadProfile(sections: Sections): LoadResult {
   const bio = loadBio(sections.bio);
+  const now = loadNow(sections.now);
   const links = loadLinks(sections.links);
 
-  const errors = [...bio.errors, ...links.errors];
-  if (bio.value === undefined || links.value === undefined || errors.length > 0) {
+  const errors = [...bio.errors, ...now.errors, ...links.errors];
+  if (bio.value === undefined || now.value === undefined || links.value === undefined || errors.length > 0) {
     return { ok: false, errors };
   }
 
@@ -64,6 +77,7 @@ export function loadProfile(sections: Sections): LoadResult {
     profile: {
       displayName: `${firstName} (${handle})`,
       bio: bio.value,
+      now: now.value,
       ...links.value,
     },
   };
@@ -118,6 +132,49 @@ function loadBio(bio: BioInput | undefined): SectionResult<Profile['bio']> {
   return { value: { firstName, handle, tagline, prose }, errors };
 }
 
+const nowError = errorsIn('now');
+
+const nowFieldLabel = fieldLabel({
+  updated: 'Updated date',
+  items: 'list of Items',
+} satisfies Record<keyof Now, string>);
+
+const nowItemFieldLabel = fieldLabel({
+  kind: 'Kind',
+  text: 'text',
+} satisfies Record<keyof NowItem, string>);
+
+function loadNow(input: NowInput | undefined): SectionResult<Profile['now']> {
+  const errors: ContentError[] = [];
+  if (input === undefined) {
+    errors.push(nowError(undefined, 'file', 'The Now Section is missing. Write it as now.json in the content folder.'));
+    return { value: undefined, errors };
+  }
+
+  const parsed = nowSchema.safeParse(input.data);
+  if (!parsed.success) {
+    for (const issue of parsed.error.issues) {
+      const [top, index, ...rest] = issue.path;
+      if (top === 'items' && typeof index === 'number') {
+        // A fault inside one Item: named by its index, since Items have no id.
+        const field = rest.map(String).join('.');
+        const sentence = `${indexPhrase('Now Item', index)}'s ${nowItemFieldLabel(field)} ${issue.message}.`;
+        errors.push(nowError(index, field, capitalised(sentence)));
+      } else if (top === undefined) {
+        // The file as a whole is not the object the schema expects.
+        errors.push(nowError(undefined, 'file', `The Now file ${issue.message}.`));
+      } else {
+        const field = issue.path.map(String).join('.');
+        errors.push(nowError(undefined, field, `The Now Section's ${nowFieldLabel(field)} ${issue.message}.`));
+      }
+    }
+    return { value: undefined, errors };
+  }
+
+  const { updated, items } = parsed.data;
+  return { value: { renders: items.length > 0, updated, items }, errors };
+}
+
 const linksError = errorsIn('links');
 
 const linkFieldLabel = fieldLabel({
@@ -134,13 +191,17 @@ const linkItem = (data: unknown, index: number): string | number => {
 };
 
 /** How a sentence names a Link: "the GitHub Link", or by its place in the file when it has no usable label. */
-const linkPhrase = (item: string | number): string =>
-  typeof item === 'string' ? `the ${item} Link` : `the Link at index ${item} (the ${ordinal(item + 1)} in the file)`;
+const linkPhrase = (item: string | number): string => (typeof item === 'string' ? `the ${item} Link` : indexPhrase('Link', item));
+
+/** How a sentence names an item that has only its place in the file: "the Link at index 1 (the 2nd in the file)". */
+const indexPhrase = (noun: string, index: number): string => `the ${noun} at index ${index} (the ${ordinal(index + 1)} in the file)`;
 
 const ordinal = (n: number): string => {
   const suffix = n % 100 >= 11 && n % 100 <= 13 ? 'th' : (['th', 'st', 'nd', 'rd'][n % 10] ?? 'th');
   return `${n}${suffix}`;
 };
+
+const capitalised = (sentence: string): string => sentence.charAt(0).toUpperCase() + sentence.slice(1);
 
 const CONTACT_CHANNEL_FIX = 'Mark exactly one Link with "isContactChannel": true.';
 
@@ -162,7 +223,7 @@ function loadLinks(input: LinksInput | undefined): SectionResult<Pick<Profile, '
       const field = rest.map(String).join('.');
       const item = linkItem(input.data, index);
       const sentence = `${linkPhrase(item)}'s ${linkFieldLabel(field)} ${issue.message}.`;
-      errors.push(linksError(item, field, sentence.charAt(0).toUpperCase() + sentence.slice(1)));
+      errors.push(linksError(item, field, capitalised(sentence)));
     }
     return { value: undefined, errors };
   }

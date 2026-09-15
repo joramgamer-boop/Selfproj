@@ -1,0 +1,9 @@
+{
+  "updated": "2026-09-15",
+  "items": [
+    { "kind": "learning", "text": "Python and SQL" },
+    { "kind": "learning", "text": "the spec-and-tickets flow: grill the idea, write the spec, cut tickets, build test-first" },
+    { "kind": "building", "text": "profile-site, the page you are reading" },
+    { "kind": "building", "text": "trade-tracker, a local-first trading log" }
+  ]
+}

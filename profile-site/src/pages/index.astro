@@ -19,6 +19,23 @@ const { profile, BioProse } = await getProfile();
         <p>{profile.bio.tagline}</p>
         <BioProse />
       </section>
+      {
+        profile.now.renders && (
+          <section id="now" aria-labelledby="now-heading">
+            <h2 id="now-heading">Now</h2>
+            <p>
+              Updated <time datetime={profile.now.updated}>{profile.now.updated}</time>
+            </p>
+            <ul>
+              {profile.now.items.map((item) => (
+                <li>
+                  <span>{item.kind}</span>: {item.text}
+                </li>
+              ))}
+            </ul>
+          </section>
+        )
+      }
       <section id="links" aria-labelledby="links-heading">
         <h2 id="links-heading">Links</h2>
         <ul>

@@ -1,5 +1,5 @@
 import { loadProfile, type Sections } from './profile';
-import { aBio, errorsOf, someLinks, theContactChannel, validSections } from '../test/fixtures';
+import { aBio, aNow, errorsOf, someLinks, theContactChannel, validSections } from '../test/fixtures';
 
 /** The Sections with the Bio replaced, or dropped with `undefined`. */
 const withBio = (bio: Sections['bio']): Sections => ({ ...validSections(), bio });
@@ -9,7 +9,7 @@ const bioWith = (data: Record<string, unknown>) => ({ ...aBio(), data: { ...aBio
 
 describe('the Bio', () => {
   it('becomes the Profile: Display Name from first name and Handle, Tagline and prose as written', () => {
-    expect(loadProfile({ bio: aBio(), links: someLinks() })).toEqual({
+    expect(loadProfile({ bio: aBio(), now: aNow(), links: someLinks() })).toEqual({
       ok: true,
       profile: {
         displayName: 'Ada (ada-l)',
@@ -19,6 +19,7 @@ describe('the Bio', () => {
           tagline: 'Makes engines think.',
           prose: 'Studies at a university and expects to graduate in 2028.',
         },
+        now: { renders: true, ...aNow().data },
         links: someLinks().data,
         contactChannel: theContactChannel(),
       },
@@ -84,10 +85,10 @@ describe('how the loader reports errors', () => {
     expect(errors.map((error) => error.field)).toEqual(['handle', 'tagline', 'body']);
   });
 
-  it('returns the errors of every Section together, not one Section at a time', () => {
-    const errors = errorsOf({ bio: undefined, links: { data: [] } });
+  it('returns the errors of every Section together, in page order, not one Section at a time', () => {
+    const errors = errorsOf({ bio: undefined, now: { data: { items: [] } }, links: { data: [] } });
 
-    expect(errors.map((error) => error.section)).toEqual(['bio', 'links']);
+    expect(errors.map((error) => error.section)).toEqual(['bio', 'now', 'links']);
   });
 
   it('never returns a Profile alongside errors', () => {
