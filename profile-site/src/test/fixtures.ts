@@ -22,6 +22,16 @@ export const aNow = () => ({
   },
 });
 
+/** A Skills Section with one Skill per Category, written out of Category order, nothing wrong. */
+export const someSkills = () => ({
+  data: [
+    { id: 'git', name: 'Git', category: 'tool' },
+    { id: 'python', name: 'Python', category: 'language' },
+    { id: 'tdd', name: 'Test-driven development', category: 'practice' },
+    { id: 'react', name: 'React', category: 'framework' },
+  ],
+});
+
 /** The one Link a Visitor is invited to use, as `someLinks()` marks it. */
 export const theContactChannel = () => ({
   label: 'LinkedIn',
@@ -35,7 +45,7 @@ export const someLinks = () => ({
 });
 
 /** Every Section with nothing wrong. */
-export const validSections = (): Sections => ({ bio: aBio(), now: aNow(), links: someLinks() });
+export const validSections = (): Sections => ({ bio: aBio(), now: aNow(), skills: someSkills(), links: someLinks() });
 
 /** The loader's errors for these Sections; fails the test if it returned a Profile instead. */
 export const errorsOf = (sections: Sections): ContentError[] => {

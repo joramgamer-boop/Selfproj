@@ -36,6 +36,23 @@ const { profile, BioProse } = await getProfile();
           </section>
         )
       }
+      {
+        profile.skills.renders && (
+          <section id="skills" aria-labelledby="skills-heading">
+            <h2 id="skills-heading">Skills</h2>
+            {profile.skills.groups.map((group) => (
+              <>
+                <h3>{group.label}</h3>
+                <ul>
+                  {group.skills.map((skill) => (
+                    <li>{skill.name}</li>
+                  ))}
+                </ul>
+              </>
+            ))}
+          </section>
+        )
+      }
       <section id="links" aria-labelledby="links-heading">
         <h2 id="links-heading">Links</h2>
         <ul>

@@ -82,3 +82,36 @@ export type Link = z.infer<typeof linkSchema>;
 
 /** The Links Section as its file gives it: a list of Links, in the order written. */
 export const linksSchema = z.array(linkSchema, { error: 'must be a list of Links' });
+
+/** The Categories a Skill can have, in the order the page shows them. */
+export const SKILL_CATEGORIES = ['language', 'framework', 'tool', 'practice'] as const;
+
+export type SkillCategory = (typeof SKILL_CATEGORIES)[number];
+
+/** A stable id the Owner references from elsewhere: lowercase words and digits joined by single hyphens. */
+const slug = () =>
+  z
+    .string({
+      error: (issue) => (issue.input === undefined ? 'is missing' : 'must be text'),
+    })
+    .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, {
+      error: 'must be a slug: lowercase letters and digits joined by single hyphens, like test-driven-development',
+    });
+
+/**
+ * One Skill: something the Owner claims to be able to use or do, with its
+ * Category. No level, rating or years field exists: a Project that lists the
+ * Skill is its evidence.
+ */
+export const skillSchema = z.object({
+  id: slug(),
+  name: requiredText(),
+  category: z.enum(SKILL_CATEGORIES, {
+    error: (issue) => (issue.input === undefined ? 'is missing' : `must be one of ${SKILL_CATEGORIES.join(', ')}`),
+  }),
+});
+
+export type Skill = z.infer<typeof skillSchema>;
+
+/** The Skills Section as its file gives it: a list of Skills, in the order written. */
+export const skillsSchema = z.array(skillSchema, { error: 'must be a list of Skills' });

@@ -1,0 +1,13 @@
+[
+  { "id": "python", "name": "Python", "category": "language" },
+  { "id": "sql", "name": "SQL", "category": "language" },
+  { "id": "javascript", "name": "JavaScript", "category": "language" },
+  { "id": "html", "name": "HTML", "category": "language" },
+  { "id": "css", "name": "CSS", "category": "language" },
+  { "id": "typescript", "name": "TypeScript", "category": "language" },
+  { "id": "react", "name": "React", "category": "framework" },
+  { "id": "git", "name": "Git", "category": "tool" },
+  { "id": "github", "name": "GitHub", "category": "tool" },
+  { "id": "cybersecurity", "name": "Cybersecurity", "category": "practice" },
+  { "id": "test-driven-development", "name": "Test-driven development", "category": "practice" }
+]

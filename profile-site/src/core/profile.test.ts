@@ -1,5 +1,5 @@
 import { loadProfile, type Sections } from './profile';
-import { aBio, aNow, errorsOf, someLinks, theContactChannel, validSections } from '../test/fixtures';
+import { aBio, aNow, errorsOf, someLinks, someSkills, theContactChannel, validSections } from '../test/fixtures';
 
 /** The Sections with the Bio replaced, or dropped with `undefined`. */
 const withBio = (bio: Sections['bio']): Sections => ({ ...validSections(), bio });
@@ -9,7 +9,7 @@ const bioWith = (data: Record<string, unknown>) => ({ ...aBio(), data: { ...aBio
 
 describe('the Bio', () => {
   it('becomes the Profile: Display Name from first name and Handle, Tagline and prose as written', () => {
-    expect(loadProfile({ bio: aBio(), now: aNow(), links: someLinks() })).toEqual({
+    expect(loadProfile({ bio: aBio(), now: aNow(), skills: someSkills(), links: someLinks() })).toEqual({
       ok: true,
       profile: {
         displayName: 'Ada (ada-l)',
@@ -20,6 +20,19 @@ describe('the Bio', () => {
           prose: 'Studies at a university and expects to graduate in 2028.',
         },
         now: { renders: true, ...aNow().data },
+        skills: {
+          renders: true,
+          groups: [
+            { category: 'language', label: 'Language', skills: [{ id: 'python', name: 'Python', category: 'language' }] },
+            { category: 'framework', label: 'Framework', skills: [{ id: 'react', name: 'React', category: 'framework' }] },
+            { category: 'tool', label: 'Tool', skills: [{ id: 'git', name: 'Git', category: 'tool' }] },
+            {
+              category: 'practice',
+              label: 'Practice',
+              skills: [{ id: 'tdd', name: 'Test-driven development', category: 'practice' }],
+            },
+          ],
+        },
         links: someLinks().data,
         contactChannel: theContactChannel(),
       },
@@ -86,9 +99,9 @@ describe('how the loader reports errors', () => {
   });
 
   it('returns the errors of every Section together, in page order, not one Section at a time', () => {
-    const errors = errorsOf({ bio: undefined, now: { data: { items: [] } }, links: { data: [] } });
+    const errors = errorsOf({ bio: undefined, now: { data: { items: [] } }, skills: undefined, links: { data: [] } });
 
-    expect(errors.map((error) => error.section)).toEqual(['bio', 'now', 'links']);
+    expect(errors.map((error) => error.section)).toEqual(['bio', 'now', 'skills', 'links']);
   });
 
   it('never returns a Profile alongside errors', () => {
