@@ -1,0 +1,78 @@
+# Builds the profile site and publishes it to GitHub Pages under
+# /Selfproj/profile-site/. See profile-site/README.md, "Publishing".
+name: Publish profile site
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'profile-site/**'
+      - '.github/workflows/publish-profile-site.yml'
+  workflow_dispatch:
+
+# The build job only reads the repository; the deploy job asks for the extra
+# Pages permissions itself.
+permissions:
+  contents: read
+
+# One deploy at a time, and never cancel one that is already publishing.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: profile-site
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: profile-site/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm test
+
+      # `npm run build` runs the typecheck again before `astro build`; that is
+      # the project's own script and keeps CI identical to a local build.
+      - name: Build
+        run: npm run build
+
+      # The Pages artifact is the whole /Selfproj/ origin path: the built site
+      # under profile-site/, plus the redirect page at the root.
+      - name: Assemble the Pages artifact
+        run: |
+          mkdir -p ../_site/profile-site
+          cp -R dist/. ../_site/profile-site/
+          cp pages-root/index.html ../_site/index.html
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

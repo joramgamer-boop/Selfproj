@@ -4,7 +4,8 @@ This repo holds several independent side projects, one per top-level folder name
 after the project (kebab-case, e.g. `tic-tac-toe/`). Each project owns its own
 `package.json` and toolchain — run `npm` commands from inside the project folder,
 not the repo root. Only shared config lives at the root: `CLAUDE.md`, `docs/`,
-`.gitignore`.
+`.gitignore`, and the GitHub Actions workflows under `.github/workflows/`
+(GitHub requires that location).
 
 ## Domain terms
 
