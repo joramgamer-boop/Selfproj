@@ -1,0 +1,27 @@
+import js from '@eslint/js';
+import { defineConfig } from 'eslint/config';
+import astro from 'eslint-plugin-astro';
+import globals from 'globals';
+import tseslint from 'typescript-eslint';
+
+export default defineConfig(
+  { ignores: ['dist', '.astro'] },
+  js.configs.recommended,
+  tseslint.configs.recommended,
+  astro.configs['flat/recommended'],
+  {
+    files: ['**/*.ts'],
+    languageOptions: {
+      globals: globals.node,
+    },
+    rules: {
+      '@typescript-eslint/no-unused-vars': ['error', { ignoreRestSiblings: true }],
+    },
+  },
+  {
+    files: ['**/*.test.ts'],
+    languageOptions: {
+      globals: { ...globals.node, ...globals.vitest },
+    },
+  },
+);

@@ -1,0 +1,24 @@
+---
+import { getProfile } from '../get-profile';
+
+const { profile, BioProse } = await getProfile();
+---
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width" />
+    <meta name="generator" content={Astro.generator} />
+    <title>{profile.displayName}</title>
+    <meta name="description" content={profile.bio.tagline} />
+  </head>
+  <body>
+    <main>
+      <section id="bio" aria-labelledby="bio-heading">
+        <h1 id="bio-heading">{profile.displayName}</h1>
+        <p>{profile.bio.tagline}</p>
+        <BioProse />
+      </section>
+    </main>
+  </body>
+</html>
